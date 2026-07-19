@@ -4,6 +4,13 @@ export type PickedPlace = { name: string; address: string; latitude: number; lon
 const sfBounds = '-122.53,37.70,-122.35,37.83';
 const token = () => process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 
+/** A location confirmation image, not a photo of the business or restroom. */
+export function placeMapPreview(place: PickedPlace) {
+  if (!token()) return null;
+  const marker = `pin-s-a+173F38(${place.longitude},${place.latitude})`;
+  return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${marker}/${place.longitude},${place.latitude},15/640x250@2x?logo=false&access_token=${encodeURIComponent(token()!)}`;
+}
+
 export async function suggestBusinesses(query: string, sessionToken: string): Promise<PlaceSuggestionResult[]> {
   if (!token() || query.trim().length < 2) return [];
   const params = new URLSearchParams({ q: query.trim(), access_token: token()!, session_token: sessionToken, bbox: sfBounds, proximity: '-122.4194,37.7749', country: 'US', limit: '6' });

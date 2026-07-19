@@ -11,6 +11,7 @@ import {
 import {
   Alert,
   FlatList,
+  Image,
   Keyboard,
   Linking,
   Modal,
@@ -28,7 +29,7 @@ import type { Region } from 'react-native-maps';
 import MapCanvas from './src/components/MapCanvas';
 import type { MapCanvasHandle } from './src/components/MapCanvas.types';
 import { categories, Restroom, sfDefaultRegion } from './src/data/restrooms';
-import { retrieveBusiness, suggestBusinesses, type PickedPlace, type PlaceSuggestionResult } from './src/lib/mapboxPlaces';
+import { placeMapPreview, retrieveBusiness, suggestBusinesses, type PickedPlace, type PlaceSuggestionResult } from './src/lib/mapboxPlaces';
 import { fallbackDirectory, loadApprovedRestrooms } from './src/lib/restroomDirectory';
 import { submitRestroomUpdate } from './src/lib/submissions';
 
@@ -75,6 +76,30 @@ export default function App() {
   const [pickedBusiness, setPickedBusiness] = useState<PickedPlace | null>(null);
   const [searchingBusinesses, setSearchingBusinesses] = useState(false);
   const [mapboxSession] = useState(() => `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+  const openPlaceSuggestion = (initialQuery = '', initialMatches: PlaceSuggestionResult[] = []) => {
+    Keyboard.dismiss();
+    setSelected(null);
+    setPickedBusiness(null);
+    setBusinessQuery(initialQuery);
+    setBusinessMatches(initialMatches);
+    setShowPlaceSuggestion(true);
+  };
+
+  const chooseBusiness = async (item: PlaceSuggestionResult) => {
+    setSearchingBusinesses(true);
+    try {
+      const place = await retrieveBusiness(item.id, mapboxSession);
+      setPickedBusiness(place);
+      setPlaceSuggestion((current) => ({ ...current, name: place.name, address: place.address }));
+      setBusinessQuery(item.name);
+      setBusinessMatches([]);
+    } catch {
+      Alert.alert('Place unavailable', 'Try choosing another result.');
+    } finally {
+      setSearchingBusinesses(false);
+    }
+  };
 
   useEffect(() => {
     loadApprovedRestrooms().then((items) => { setDirectory(items); setDirectorySource(items === fallbackDirectory ? 'fallback' : 'live'); }).catch(() => setDirectorySource('fallback'));
@@ -144,13 +169,18 @@ export default function App() {
       return;
     }
     try {
+      const businesses = await suggestBusinesses(query, mapboxSession);
+      if (businesses.length) {
+        openPlaceSuggestion(query, businesses);
+        return;
+      }
       const results = await Location.geocodeAsync(query.toLowerCase().includes('san francisco') ? query : `${query}, San Francisco, CA`);
       if (!results[0]) throw new Error('No location');
       const next = { latitude: results[0].latitude, longitude: results[0].longitude, latitudeDelta: 0.018, longitudeDelta: 0.018 };
       setRegion(next);
       mapRef.current?.animateToRegion(next);
     } catch {
-      Alert.alert('Try another address', 'We could not find that San Francisco address. Try “Golden Gate Park” or a street address.');
+      openPlaceSuggestion(query);
     }
   };
 
@@ -211,7 +241,8 @@ export default function App() {
         <Text style={styles.wordmark}>RELIEF</Text>
         <Text style={styles.tagline}>San Francisco restroom finder</Text>
         <View style={styles.searchRow}>
-          <TextInput value={query} onChangeText={setQuery} onSubmitEditing={searchAddress} placeholder="Search an SF address or neighborhood" placeholderTextColor="#8A918B" style={styles.searchInput} returnKeyType="search" />
+          <TextInput value={query} onChangeText={setQuery} onSubmitEditing={searchAddress} placeholder="Find a restroom or place" placeholderTextColor="#8A918B" style={styles.searchInput} returnKeyType="search" />
+          <Pressable accessibilityLabel="Suggest a restroom place" onPress={() => openPlaceSuggestion(query)} style={styles.addPlaceButton}><Text style={styles.addPlaceButtonText}>＋ Place</Text></Pressable>
           <Pressable onPress={searchAddress} style={styles.searchButton}><Text style={styles.searchButtonText}>Go</Text></Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -225,7 +256,7 @@ export default function App() {
       <Pressable style={styles.luckyButton} onPress={findImmediateRelief}><Text style={styles.luckyLabel}>I’M FEELING LUCKY</Text><Text style={styles.luckyCopy}>Find closest open restroom →</Text></Pressable>
 
       <View style={styles.resultsPanel}>
-        <View style={styles.resultsHeader}><View><Text style={styles.resultsTitle}>{sortedRestrooms.length ? 'Nearby relief' : 'No matches yet'}</Text><Text style={styles.directoryMeta}>{directorySource === 'loading' ? 'Loading verified places…' : directorySource === 'live' ? `${directory.length} map locations · City data + verified community records` : 'Curated fallback directory'}</Text></View><Pressable onPress={() => setShowPlaceSuggestion(true)}><Text style={styles.suggestLink}>+ Suggest a place</Text></Pressable></View>
+        <View style={styles.resultsHeader}><View><Text style={styles.resultsTitle}>{sortedRestrooms.length ? 'Nearby relief' : 'No matches yet'}</Text><Text style={styles.directoryMeta}>{directorySource === 'loading' ? 'Loading verified places…' : directorySource === 'live' ? `${directory.length} map locations · City data + verified community records` : 'Curated fallback directory'}</Text></View>{!sortedRestrooms.length && <Pressable onPress={() => openPlaceSuggestion(query)}><Text style={styles.suggestLink}>Add this place →</Text></Pressable>}</View>
         <FlatList horizontal data={sortedRestrooms.slice(0, 8)} keyExtractor={(item) => item.id} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards} renderItem={({ item }) => <RestroomCard restroom={item} distance={distanceLabel(metersBetween(origin, item))} onPress={() => focus(item)} />} />
       </View>
 
@@ -253,9 +284,9 @@ export default function App() {
         </View>
       </Modal>
       <Modal visible={showPlaceSuggestion} animationType="slide" transparent onRequestClose={() => setShowPlaceSuggestion(false)}>
-        <View style={styles.contributionSheet}><Text style={styles.contributionTitle}>Suggest a restroom</Text><Text style={styles.contributionCopy}>Search for an existing San Francisco business. Your suggestion stays pending until reviewed—no account needed.</Text>
-          {pickedBusiness ? <View style={styles.pickedBusiness}><View><Text style={styles.pickedBusinessLabel}>SELECTED PLACE</Text><Text style={styles.pickedBusinessName}>{pickedBusiness.name}</Text><Text style={styles.pickedBusinessAddress}>{pickedBusiness.address}</Text></View><Pressable onPress={() => { setPickedBusiness(null); setBusinessQuery(''); setPlaceSuggestion((current) => ({ ...current, name: '', address: '' })); }}><Text style={styles.changePlace}>Change</Text></Pressable></View> : <><TextInput style={styles.accessInput} value={businessQuery} onChangeText={setBusinessQuery} autoCorrect={false} placeholder="Search a business (e.g. Peet’s Coffee)" placeholderTextColor="#838A83" />
-          {(searchingBusinesses || businessMatches.length > 0) && <View style={styles.businessResults}>{searchingBusinesses && !businessMatches.length ? <Text style={styles.businessLoading}>Searching San Francisco…</Text> : businessMatches.map((item) => <Pressable key={item.id} onPress={async () => { setSearchingBusinesses(true); try { const place = await retrieveBusiness(item.id, mapboxSession); setPickedBusiness(place); setPlaceSuggestion((current) => ({ ...current, name: place.name, address: place.address })); setBusinessQuery(item.name); setBusinessMatches([]); } catch { Alert.alert('Place unavailable', 'Try choosing another result.'); } finally { setSearchingBusinesses(false); } }} style={styles.businessResult}><Text style={styles.businessName}>{item.name}</Text><Text style={styles.businessAddress}>{item.subtitle}</Text></Pressable>)}</View>}</>}
+        <View style={styles.contributionSheet}><Text style={styles.contributionTitle}>{pickedBusiness ? 'Add restroom details' : 'Is this place missing?'}</Text><Text style={styles.contributionCopy}>{pickedBusiness ? 'Confirm the location, then share only what you know. It stays pending until reviewed.' : 'Search an existing San Francisco business. We will add it to the human-reviewed queue—no account needed.'}</Text>
+          {pickedBusiness ? <View style={styles.pickedBusiness}><View style={styles.pickedBusinessContent}><Text style={styles.pickedBusinessLabel}>MAPBOX PLACE MATCH</Text><Text style={styles.pickedBusinessName}>{pickedBusiness.name}</Text><Text style={styles.pickedBusinessAddress}>{pickedBusiness.address}</Text>{placeMapPreview(pickedBusiness) && <Image source={{ uri: placeMapPreview(pickedBusiness)! }} accessibilityLabel={`Map showing ${pickedBusiness.name}`} style={styles.placePreview} />}</View><Pressable onPress={() => { setPickedBusiness(null); setBusinessQuery(''); setPlaceSuggestion((current) => ({ ...current, name: '', address: '' })); }}><Text style={styles.changePlace}>Change</Text></Pressable></View> : <><TextInput style={styles.accessInput} value={businessQuery} onChangeText={setBusinessQuery} autoCorrect={false} placeholder="Search a business (e.g. Peet’s Coffee)" placeholderTextColor="#838A83" />
+          {(searchingBusinesses || businessMatches.length > 0 || businessQuery.trim().length > 1) && <View style={styles.businessResults}>{searchingBusinesses && !businessMatches.length ? <Text style={styles.businessLoading}>Searching San Francisco…</Text> : businessMatches.length ? businessMatches.map((item) => <Pressable key={item.id} onPress={() => chooseBusiness(item)} style={styles.businessResult}><Text style={styles.businessName}>{item.name}</Text><Text style={styles.businessAddress}>{item.subtitle}</Text><Text style={styles.addResultHint}>Not in Relief yet · add details →</Text></Pressable>) : <Text style={styles.businessLoading}>No place match yet. Try a fuller business name or address.</Text>}</View>}</>}
           <Text style={styles.fieldLabel}>PLACE TYPE</Text><View style={styles.optionRow}>{(['Public', 'Park', 'Restaurant', 'Grocery', 'Coffee'] as const).map((category) => <Pressable key={category} onPress={() => setPlaceSuggestion((current) => ({ ...current, category }))} style={[styles.option, placeSuggestion.category === category && styles.optionActive]}><Text style={[styles.optionText, placeSuggestion.category === category && styles.optionTextActive]}>{category}</Text></Pressable>)}</View>
           <Text style={styles.fieldLabel}>ACCESS</Text><View style={styles.optionRow}>{['Free', 'Code required', 'Purchase expected', 'Ask staff'].map((option) => <Pressable key={option} onPress={() => setPlaceSuggestion((current) => ({ ...current, accessChoice: current.accessChoice === option ? '' : option }))} style={[styles.option, placeSuggestion.accessChoice === option && styles.optionActive]}><Text style={[styles.optionText, placeSuggestion.accessChoice === option && styles.optionTextActive]}>{option}</Text></Pressable>)}</View>
           <Text style={styles.fieldLabel}>CLEANLINESS</Text><RatingPicker value={placeSuggestion.cleanlinessRating} onChange={(cleanlinessRating) => setPlaceSuggestion((current) => ({ ...current, cleanlinessRating }))} />
@@ -278,7 +309,7 @@ function RatingPicker({ value, onChange }: { value: number; onChange: (rating: n
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F4F1EA' },
   mapWrap: { ...StyleSheet.absoluteFill }, topPanel: { paddingHorizontal: 16, paddingTop: 8 }, wordmark: { fontSize: 27, letterSpacing: 4, color: '#173F38', fontWeight: '900' }, tagline: { color: '#53625A', fontSize: 12, letterSpacing: .4, marginTop: -2, marginBottom: 12 },
-  searchRow: { backgroundColor: '#FFFEFA', height: 52, borderRadius: 16, shadowColor: '#182821', shadowOpacity: .16, shadowRadius: 14, shadowOffset: { width: 0, height: 5 }, flexDirection: 'row', alignItems: 'center', paddingLeft: 15 }, searchInput: { flex: 1, color: '#1B3029', fontSize: 15 }, searchButton: { alignSelf: 'stretch', justifyContent: 'center', paddingHorizontal: 17, backgroundColor: '#173F38', borderTopRightRadius: 16, borderBottomRightRadius: 16 }, searchButtonText: { color: '#FCFBF5', fontWeight: '800' },
+  searchRow: { backgroundColor: '#FFFEFA', height: 52, borderRadius: 16, shadowColor: '#182821', shadowOpacity: .16, shadowRadius: 14, shadowOffset: { width: 0, height: 5 }, flexDirection: 'row', alignItems: 'center', paddingLeft: 15 }, searchInput: { flex: 1, color: '#1B3029', fontSize: 15, minWidth: 84 }, addPlaceButton: { borderLeftWidth: 1, borderLeftColor: '#E2E6DE', paddingHorizontal: 9, paddingVertical: 8 }, addPlaceButtonText: { color: '#C95B34', fontSize: 11, fontWeight: '900' }, searchButton: { alignSelf: 'stretch', justifyContent: 'center', paddingHorizontal: 17, backgroundColor: '#173F38', borderTopRightRadius: 16, borderBottomRightRadius: 16 }, searchButtonText: { color: '#FCFBF5', fontWeight: '800' },
   chips: { gap: 8, paddingTop: 10 }, chip: { backgroundColor: 'rgba(255,254,250,.93)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 99 }, chipActive: { backgroundColor: '#173F38' }, chipOpen: { backgroundColor: '#C95B34' }, chipText: { color: '#34483F', fontSize: 12, fontWeight: '700' }, chipTextActive: { color: '#FFFEFA' },
   locationButton: { position: 'absolute', right: 17, top: 203, width: 46, height: 46, borderRadius: 23, backgroundColor: '#FFFEFA', alignItems: 'center', justifyContent: 'center', shadowColor: '#182821', shadowOpacity: .18, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } }, locationButtonText: { color: '#173F38', fontSize: 27, lineHeight: 30 }, luckyButton: { position: 'absolute', left: 16, top: 204, backgroundColor: '#C95B34', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, shadowColor: '#182821', shadowOpacity: .18, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } }, luckyLabel: { color: '#FFFEFA', fontSize: 11, letterSpacing: .8, fontWeight: '900' }, luckyCopy: { color: '#FFF0E9', fontSize: 11, marginTop: 2, fontWeight: '700' },
   resultsPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#F4F1EA', borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingTop: 15, paddingBottom: Platform.OS === 'ios' ? 17 : 15 }, resultsHeader: { paddingHorizontal: 18, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }, resultsTitle: { color: '#173F38', fontSize: 19, fontWeight: '900' }, directoryMeta: { color: '#647269', fontSize: 10, marginTop: 2, fontWeight: '700' }, suggestLink: { color: '#C95B34', fontWeight: '900', fontSize: 12 }, cards: { paddingHorizontal: 16, paddingTop: 12, gap: 10 },
@@ -287,6 +318,6 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 18 }, status: { fontSize: 11, fontWeight: '900', letterSpacing: .7, paddingVertical: 5, paddingHorizontal: 7, borderRadius: 6, overflow: 'hidden' }, open: { backgroundColor: '#DBEEE0', color: '#21623E' }, closed: { backgroundColor: '#F7DFD5', color: '#963E21' }, confirm: { backgroundColor: '#F4ECD4', color: '#8A651B' }, hours: { color: '#53625A', fontSize: 13 }, description: { color: '#35483F', fontSize: 15, lineHeight: 21, marginTop: 16 }, tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 15 }, tag: { borderColor: '#D7DED7', borderWidth: 1, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 20 }, tagText: { fontSize: 12, color: '#486056', fontWeight: '700' }, verifiedTag: { backgroundColor: '#E1EEE7', paddingHorizontal: 9, paddingVertical: 6, borderRadius: 20 }, verifiedTagText: { fontSize: 10, letterSpacing: .6, color: '#24603D', fontWeight: '900' },
   photoNotice: { flexDirection: 'row', gap: 12, backgroundColor: '#F2F0E8', borderRadius: 14, padding: 12, marginTop: 18 }, photoIcon: { fontSize: 22, color: '#C95B34' }, photoTitle: { color: '#274239', fontWeight: '800', fontSize: 13 }, photoCopy: { color: '#617168', fontSize: 12, lineHeight: 17, marginTop: 2, maxWidth: 290 }, detailActions: { flexDirection: 'row', gap: 10, marginTop: 19 }, directions: { flex: 1, backgroundColor: '#173F38', borderRadius: 13, alignItems: 'center', paddingVertical: 14 }, directionsText: { color: '#FFFDF7', fontWeight: '900', fontSize: 14 }, update: { flex: .65, borderWidth: 1, borderColor: '#173F38', borderRadius: 13, alignItems: 'center', paddingVertical: 14 }, updateText: { color: '#173F38', fontWeight: '900', fontSize: 14 },
   contributionSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFFEFA', padding: 23, paddingBottom: 38, borderTopLeftRadius: 27, borderTopRightRadius: 27 }, contributionTitle: { color: '#173F38', fontSize: 23, fontWeight: '900' }, contributionCopy: { color: '#5D6D65', lineHeight: 19, marginTop: 6 }, noteInput: { minHeight: 95, borderRadius: 14, backgroundColor: '#F2F0E8', marginTop: 18, padding: 13, color: '#203A31', textAlignVertical: 'top' }, accessInput: { borderRadius: 14, backgroundColor: '#F2F0E8', marginTop: 9, padding: 13, color: '#203A31' }, fieldLabel: { marginTop: 14, color: '#54645B', fontWeight: '900', letterSpacing: 1, fontSize: 10 }, optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 7 }, option: { borderColor: '#C9D2C9', borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7 }, optionActive: { backgroundColor: '#173F38', borderColor: '#173F38' }, optionText: { color: '#436057', fontWeight: '800', fontSize: 12 }, optionTextActive: { color: '#FFFEFA' }, photoButton: { marginTop: 10, borderRadius: 12, padding: 12, alignItems: 'center', borderColor: '#C9D2C9', borderWidth: 1, borderStyle: 'dashed' }, photoButtonText: { color: '#355448', fontWeight: '800', fontSize: 13 }, cancel: { flex: .7, backgroundColor: '#ECEAE2', borderRadius: 13, alignItems: 'center', paddingVertical: 14 }, cancelText: { color: '#53625A', fontWeight: '800' },
-  pickedBusiness: { marginTop: 10, padding: 13, borderRadius: 14, backgroundColor: '#E1EEE7', flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, pickedBusinessLabel: { color: '#4D6A5D', fontSize: 9, letterSpacing: 1, fontWeight: '900' }, pickedBusinessName: { color: '#173F38', fontSize: 15, fontWeight: '900', marginTop: 3 }, pickedBusinessAddress: { color: '#53625A', fontSize: 12, marginTop: 2, maxWidth: 245 }, changePlace: { color: '#C95B34', fontWeight: '900', fontSize: 12, paddingTop: 2 }, businessResults: { backgroundColor: '#FFFEFA', borderColor: '#DDE2DA', borderWidth: 1, borderRadius: 14, marginTop: 6, overflow: 'hidden' }, businessLoading: { padding: 12, color: '#5D6D65', fontSize: 13 }, businessResult: { paddingHorizontal: 13, paddingVertical: 11, borderBottomColor: '#E6E8E1', borderBottomWidth: 1 }, businessName: { color: '#203A31', fontWeight: '800', fontSize: 14 }, businessAddress: { color: '#6B766E', fontSize: 12, marginTop: 2 },
+  pickedBusiness: { marginTop: 10, padding: 13, borderRadius: 14, backgroundColor: '#E1EEE7', flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, pickedBusinessContent: { flex: 1 }, pickedBusinessLabel: { color: '#4D6A5D', fontSize: 9, letterSpacing: 1, fontWeight: '900' }, pickedBusinessName: { color: '#173F38', fontSize: 15, fontWeight: '900', marginTop: 3 }, pickedBusinessAddress: { color: '#53625A', fontSize: 12, marginTop: 2, maxWidth: 245 }, placePreview: { width: '100%', height: 106, borderRadius: 9, marginTop: 10, backgroundColor: '#C8D3C8' }, changePlace: { color: '#C95B34', fontWeight: '900', fontSize: 12, paddingTop: 2 }, businessResults: { backgroundColor: '#FFFEFA', borderColor: '#DDE2DA', borderWidth: 1, borderRadius: 14, marginTop: 6, overflow: 'hidden' }, businessLoading: { padding: 12, color: '#5D6D65', fontSize: 13 }, businessResult: { paddingHorizontal: 13, paddingVertical: 11, borderBottomColor: '#E6E8E1', borderBottomWidth: 1 }, businessName: { color: '#203A31', fontWeight: '800', fontSize: 14 }, businessAddress: { color: '#6B766E', fontSize: 12, marginTop: 2 }, addResultHint: { color: '#C95B34', fontWeight: '800', fontSize: 11, marginTop: 5 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }, ratingStar: { color: '#CED4CE', fontSize: 27, lineHeight: 31 }, ratingStarSelected: { color: '#D49A2A' }, ratingHint: { color: '#657068', fontSize: 12, fontWeight: '800', marginLeft: 7 },
 });
