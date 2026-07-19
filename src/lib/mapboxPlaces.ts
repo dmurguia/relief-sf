@@ -1,0 +1,24 @@
+export type PlaceSuggestionResult = { id: string; name: string; subtitle: string };
+export type PickedPlace = { name: string; address: string; latitude: number; longitude: number };
+
+const sfBounds = '-122.53,37.70,-122.35,37.83';
+const token = () => process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
+
+export async function suggestBusinesses(query: string, sessionToken: string): Promise<PlaceSuggestionResult[]> {
+  if (!token() || query.trim().length < 2) return [];
+  const params = new URLSearchParams({ q: query.trim(), access_token: token()!, session_token: sessionToken, bbox: sfBounds, proximity: '-122.4194,37.7749', country: 'US', limit: '6' });
+  const response = await fetch(`https://api.mapbox.com/search/searchbox/v1/suggest?${params}`);
+  if (!response.ok) throw new Error('Place search unavailable');
+  const body = await response.json();
+  return (body.suggestions ?? []).filter((item: any) => item.feature_type === 'poi' || item.feature_type === 'address').map((item: any) => ({ id: item.mapbox_id, name: item.name_preferred || item.name, subtitle: item.full_address || item.place_formatted || 'San Francisco' }));
+}
+
+export async function retrieveBusiness(id: string, sessionToken: string): Promise<PickedPlace> {
+  if (!token()) throw new Error('Mapbox token missing');
+  const params = new URLSearchParams({ access_token: token()!, session_token: sessionToken });
+  const response = await fetch(`https://api.mapbox.com/search/searchbox/v1/retrieve/${encodeURIComponent(id)}?${params}`);
+  if (!response.ok) throw new Error('Place lookup unavailable');
+  const feature = (await response.json()).features?.[0];
+  if (!feature?.geometry?.coordinates) throw new Error('Place not found');
+  return { name: feature.properties?.name_preferred || feature.properties?.name || feature.text || 'Suggested place', address: feature.properties?.full_address || feature.properties?.place_formatted || feature.properties?.address || 'San Francisco', longitude: feature.geometry.coordinates[0], latitude: feature.geometry.coordinates[1] };
+}
