@@ -173,15 +173,22 @@ export default function App() {
   };
 
   const findImmediateRelief = async () => {
-    let origin = userLocation ?? { latitude: region.latitude, longitude: region.longitude };
     const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status === 'granted') {
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    if (permission.status !== 'granted') {
+      Alert.alert('Location is needed', 'Allow location to find the closest restroom. You can also use the location button and search the map yourself.');
+      return;
+    }
+    let origin: { latitude: number; longitude: number };
+    try {
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       origin = { latitude: position.coords.latitude, longitude: position.coords.longitude };
       setUserLocation(origin);
+    } catch {
+      Alert.alert('Could not get your location', 'Try again with location services enabled, or search an address instead.');
+      return;
     }
     const byDistance = [...directory].sort((a, b) => metersBetween(origin, a) - metersBetween(origin, b));
-    const closest = byDistance.find(isOpenNow) ?? byDistance[0];
+    const closest = byDistance[0];
     if (!closest) {
       Alert.alert('No nearby match', 'Try searching an address or removing a filter.');
       return;
@@ -315,7 +322,7 @@ export default function App() {
       </View>}
 
       <Pressable style={styles.locationButton} onPress={useMyLocation}><Text style={styles.locationButtonText}>⌖</Text></Pressable>
-      <Pressable style={styles.luckyButton} onPress={findImmediateRelief}><Text style={styles.luckyLabel}>I’M FEELING LUCKY</Text><Text style={styles.luckyCopy}>Find closest open restroom →</Text></Pressable>
+      <Pressable style={styles.luckyButton} onPress={findImmediateRelief}><Text style={styles.luckyLabel}>I’M FEELING LUCKY</Text><Text style={styles.luckyCopy}>Find closest restroom →</Text></Pressable>
 
       <View style={styles.resultsPanel}>
         <View style={styles.resultsHeader}><View><Text style={styles.resultsTitle}>{sortedRestrooms.length ? 'Nearby relief' : 'No matches yet'}</Text><Text style={styles.directoryMeta}>{directorySource === 'loading' ? 'Loading verified places…' : directorySource === 'live' ? `${directory.length} map locations · City data + verified community records` : 'Curated fallback directory'}</Text></View>{!sortedRestrooms.length && <Pressable onPress={() => openPlaceSuggestion(query)}><Text style={styles.suggestLink}>Add this place →</Text></Pressable>}</View>
