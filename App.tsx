@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import {
   useCallback,
   useEffect,
@@ -241,7 +242,10 @@ export default function App() {
       return;
     }
     const selection = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.78, allowsEditing: false });
-    if (!selection.canceled) setContribution((current) => ({ ...current, photoUri: selection.assets[0].uri }));
+    if (!selection.canceled) {
+      const photoUri = await normalizePhotoForUpload(selection.assets[0].uri);
+      setContribution((current) => ({ ...current, photoUri }));
+    }
   };
 
   const choosePlacePhoto = async () => {
@@ -251,7 +255,10 @@ export default function App() {
       return;
     }
     const selection = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.78, allowsEditing: false });
-    if (!selection.canceled) setPlaceSuggestion((current) => ({ ...current, photoUri: selection.assets[0].uri }));
+    if (!selection.canceled) {
+      const photoUri = await normalizePhotoForUpload(selection.assets[0].uri);
+      setPlaceSuggestion((current) => ({ ...current, photoUri }));
+    }
   };
 
   const sendPlaceSuggestion = async () => {
@@ -376,6 +383,14 @@ function PhotoSelection({ uri, onChoose, onRemove, optional = false }: { uri: st
     <Image source={{ uri }} accessibilityLabel="Selected restroom photo preview" style={styles.photoPreviewImage} />
     <View style={styles.photoPreviewContent}><Text style={styles.photoPreviewTitle}>Photo ready to submit</Text><Text style={styles.photoPreviewCopy}>Check that this is the restroom photo you meant to share.</Text><View style={styles.photoPreviewActions}><Pressable accessibilityLabel="Choose a different photo" onPress={onChoose} style={styles.photoChangeButton}><Text style={styles.photoChangeText}>Change</Text></Pressable><Pressable accessibilityLabel="Remove selected photo" onPress={onRemove} style={styles.photoRemoveButton}><Text style={styles.photoRemoveText}>Remove</Text></Pressable></View></View>
   </View>;
+}
+
+async function normalizePhotoForUpload(uri: string) {
+  try {
+    return (await ImageManipulator.manipulateAsync(uri, [], { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG })).uri;
+  } catch {
+    return uri;
+  }
 }
 
 const styles = StyleSheet.create({
