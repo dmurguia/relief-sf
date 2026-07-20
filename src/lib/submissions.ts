@@ -1,5 +1,5 @@
 type Update = { restroomId: string; note: string; accessDetail?: string; cleanlinessRating?: number; photoUri?: string };
-type PlaceSuggestion = { name: string; address: string; category: string; note: string; accessDetail?: string; cleanlinessRating?: number; latitude: number; longitude: number };
+type PlaceSuggestion = { name: string; address: string; category: string; note: string; accessDetail?: string; cleanlinessRating?: number; photoUri?: string; latitude: number; longitude: number };
 
 const localUpdates: Update[] = [];
 
@@ -40,9 +40,21 @@ export async function submitPlaceSuggestion(suggestion: PlaceSuggestion): Promis
   const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return { remote: false, message: 'Connect Supabase to send this place for review.' };
   try {
+    let photoPath: string | null = null;
+    if (suggestion.photoUri) {
+      const image = await fetch(suggestion.photoUri);
+      const imageBlob = await image.blob();
+      photoPath = `pending/place-suggestion/${Date.now()}.jpg`;
+      const photoUpload = await fetch(`${url}/storage/v1/object/restroom-submissions/${photoPath}`, {
+        method: 'POST',
+        headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': imageBlob.type || 'image/jpeg', 'x-upsert': 'false' },
+        body: imageBlob,
+      });
+      if (!photoUpload.ok) throw new Error('Photo upload failed');
+    }
     const response = await fetch(`${url}/rest/v1/place_suggestions`, {
       method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ name: suggestion.name, address: suggestion.address, category: suggestion.category, latitude: suggestion.latitude, longitude: suggestion.longitude, note: suggestion.note || null, access_detail: suggestion.accessDetail || null, cleanliness_rating: suggestion.cleanlinessRating || null }),
+      body: JSON.stringify({ name: suggestion.name, address: suggestion.address, category: suggestion.category, latitude: suggestion.latitude, longitude: suggestion.longitude, note: suggestion.note || null, access_detail: suggestion.accessDetail || null, cleanliness_rating: suggestion.cleanlinessRating || null, photo_path: photoPath }),
     });
     if (!response.ok) throw new Error('Submission failed');
     return { remote: true, message: 'It is pending review and will appear on the map only after verification.' };

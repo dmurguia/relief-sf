@@ -9,6 +9,7 @@ create table if not exists place_suggestions (
   note text check (char_length(note) <= 1000),
   access_detail text check (char_length(access_detail) <= 280),
   cleanliness_rating smallint check (cleanliness_rating between 1 and 5),
+  photo_path text,
   status review_status not null default 'pending',
   created_at timestamptz not null default now()
 );
