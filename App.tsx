@@ -289,7 +289,7 @@ export default function App() {
       <View style={styles.topPanel}>
         <View style={styles.brandRow}><View><Text style={styles.wordmark}>RELIEF</Text><Text style={styles.tagline}>San Francisco restroom finder</Text></View><Pressable accessibilityLabel="Open settings" onPress={() => setShowCoverageLab(true)} style={styles.settingsButton}><Text style={styles.settingsButtonText}>⚙</Text></Pressable></View>
         <View style={styles.searchRow}>
-          <TextInput value={query} onChangeText={setQuery} onFocus={() => setSearchFocused(true)} onSubmitEditing={searchAddress} placeholder="Search restrooms, parks & places" placeholderTextColor="#8A918B" style={styles.searchInput} returnKeyType="search" />
+          <TextInput value={query} onChangeText={setQuery} onFocus={() => setSearchFocused(true)} onSubmitEditing={searchAddress} placeholder="Search restrooms, parks & places" placeholderTextColor="#8A918B" selectionColor="#C95B34" style={[styles.searchInput, Platform.OS === 'web' && ({ outlineStyle: 'none', outlineWidth: 0 } as any)]} returnKeyType="search" />
           <Pressable onPress={searchAddress} style={styles.searchButton}><Text style={styles.searchButtonText}>Go</Text></Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
