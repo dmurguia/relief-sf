@@ -48,8 +48,9 @@ In the Supabase SQL Editor, run these files in order:
 1. [`supabase/schema.sql`](./supabase/schema.sql)
 2. [`supabase/add-place-suggestions.sql`](./supabase/add-place-suggestions.sql)
 3. [`supabase/add-cleanliness-ratings.sql`](./supabase/add-cleanliness-ratings.sql)
-4. [`supabase/add-trust-pipeline.sql`](./supabase/add-trust-pipeline.sql)
-5. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
+4. [`supabase/add-place-suggestion-photos.sql`](./supabase/add-place-suggestion-photos.sql)
+5. [`supabase/add-trust-pipeline.sql`](./supabase/add-trust-pipeline.sql)
+6. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
 
 The final generated file contains 214 current DataSF city restroom records. Regenerate it before a release with:
 
@@ -69,9 +70,15 @@ node scripts/build-osm-candidate-seed.mjs
 
 It creates small `supabase/generated/osm-venue-candidates-*.sql` batches: a private `venue_candidates` queue of open-data venues, not restroom claims. Execute every batch in Supabase only after `add-trust-pipeline.sql`. Retain the visible attribution `© OpenStreetMap contributors` with a link to [its copyright page](https://www.openstreetmap.org/copyright). [`scripts/build-osm-candidate-query.md`](./scripts/build-osm-candidate-query.md) documents the guardrails.
 
+### Where the 3,444 candidates came from
+
+The candidate generator sends one reproducible Overpass query over the San Francisco bounding box. It collects named OpenStreetMap venues tagged as cafes, restaurants, fast-food locations, libraries, community centres, marketplaces, toilets, supermarkets, or department stores; it deduplicates by normalized name and approximate coordinates. Every candidate retains its OpenStreetMap object URL, source name, retrieval time, and ODbL 1.0 license. The count is **not** a claim that 3,444 restrooms exist—these are private venue leads that may be researched, rejected, or escalated.
+
 ## GPT-5.6 photo review
 
 The operator-only Supabase Edge Function in [`supabase/functions/enrich-restroom-photo/index.ts`](./supabase/functions/enrich-restroom-photo/index.ts) receives a pending, contributor-owned restroom photo and returns a constrained JSON proposal: restroom/not-restroom, publish safety, visual description, tags, and concerns. It explicitly rejects people, visible door codes, personal data, and non-restroom photos. A human still decides whether to publish.
+
+The novel use of GPT-5.6 is **evidence-constrained review, not location generation**: it converts a private, contributor-owned photo plus the submitted note into a structured moderation proposal; it is forbidden from inferring hours, pricing, door codes, or accessibility compliance. The operator can then accept or reject discrete proposed facts instead of reading every image from scratch. Candidate venues are deliberately kept separate: GPT-5.6 has not been used to declare the OpenStreetMap queue to be verified restrooms.
 
 ### Coverage expansion jobs
 
