@@ -11,3 +11,6 @@ begin
     alter table place_suggestions add constraint place_suggestions_cleanliness_rating_check check (cleanliness_rating between 1 and 5);
   end if;
 end $$;
+
+-- Make newly added columns visible to the REST API immediately.
+notify pgrst, 'reload schema';
