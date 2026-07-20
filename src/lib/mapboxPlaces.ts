@@ -4,6 +4,14 @@ export type PickedPlace = { name: string; address: string; latitude: number; lon
 const sfBounds = '-122.53,37.70,-122.35,37.83';
 const token = () => process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 
+const searchVariants = (query: string) => {
+  const clean = query.trim();
+  const variants = [clean];
+  // Mapbox indexes this SF business under its current brand name, RH.
+  if (/restoration\s+hardware/i.test(clean)) variants.push(clean.replace(/restoration\s+hardware/ig, 'RH'));
+  return [...new Set(variants)];
+};
+
 /** A location confirmation image, not a photo of the business or restroom. */
 export function placeMapPreview(place: PickedPlace) {
   if (!token()) return null;
@@ -13,11 +21,14 @@ export function placeMapPreview(place: PickedPlace) {
 
 export async function suggestBusinesses(query: string, sessionToken: string): Promise<PlaceSuggestionResult[]> {
   if (!token() || query.trim().length < 2) return [];
-  const params = new URLSearchParams({ q: query.trim(), access_token: token()!, session_token: sessionToken, bbox: sfBounds, proximity: '-122.4194,37.7749', country: 'US', limit: '6' });
-  const response = await fetch(`https://api.mapbox.com/search/searchbox/v1/suggest?${params}`);
-  if (!response.ok) throw new Error('Place search unavailable');
-  const body = await response.json();
-  return (body.suggestions ?? []).filter((item: any) => item.feature_type === 'poi' || item.feature_type === 'address').map((item: any) => ({ id: item.mapbox_id, name: item.name_preferred || item.name, subtitle: item.full_address || item.place_formatted || 'San Francisco' }));
+  const responses = await Promise.all(searchVariants(query).map(async (variant) => {
+    const params = new URLSearchParams({ q: variant, access_token: token()!, session_token: sessionToken, bbox: sfBounds, proximity: '-122.4194,37.7749', country: 'US', limit: '6' });
+    const response = await fetch(`https://api.mapbox.com/search/searchbox/v1/suggest?${params}`);
+    if (!response.ok) throw new Error('Place search unavailable');
+    const body = await response.json();
+    return (body.suggestions ?? []).filter((item: any) => item.feature_type === 'poi' || item.feature_type === 'address').map((item: any) => ({ id: item.mapbox_id, name: item.name_preferred || item.name, subtitle: item.full_address || item.place_formatted || 'San Francisco' }));
+  }));
+  return responses.flat().filter((item, index, all) => all.findIndex((other) => other.id === item.id) === index).slice(0, 6);
 }
 
 export async function retrieveBusiness(id: string, sessionToken: string): Promise<PickedPlace> {

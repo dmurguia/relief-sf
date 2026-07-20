@@ -1,0 +1,4 @@
+[functions.enrich-restroom-photo]
+# This endpoint is protected by the private x-relief-review-token checked in its code.
+# It cannot be invoked from the public app; do not put that token in EXPO_PUBLIC_* or Vercel.
+verify_jwt = false

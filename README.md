@@ -73,12 +73,27 @@ It creates small `supabase/generated/osm-venue-candidates-*.sql` batches: a priv
 
 The operator-only Supabase Edge Function in [`supabase/functions/enrich-restroom-photo/index.ts`](./supabase/functions/enrich-restroom-photo/index.ts) receives a pending, contributor-owned restroom photo and returns a constrained JSON proposal: restroom/not-restroom, publish safety, visual description, tags, and concerns. It explicitly rejects people, visible door codes, personal data, and non-restroom photos. A human still decides whether to publish.
 
+### Coverage expansion jobs
+
+Run [`supabase/add-exploration-jobs.sql`](./supabase/add-exploration-jobs.sql) once. The in-app Settings → Coverage Lab shows an operator-facing scope brief, but cannot launch work from the public client. Create a protected job locally only after setting a service-role key:
+
+```bash
+node scripts/queue-exploration-job.mjs neighborhood "SoMa"
+node scripts/queue-exploration-job.mjs city "San Francisco"
+```
+
+Job runners may use only city/open datasets and official business sources, must retain evidence and licensing information, and must write discoveries as private `venue_candidates`. A human approves any public restroom record.
+
+This abstraction can queue a new city such as New York for private candidate review, but the public Relief map remains SF-only until that city has an approved, human-reviewed inventory. Do not describe a queued city as verified coverage.
+
 Deploy it after installing and logging in to the Supabase CLI:
 
 ```bash
 supabase secrets set OPENAI_API_KEY=... RELIEF_REVIEW_TOKEN=...
 supabase functions deploy enrich-restroom-photo
 ```
+
+`enrich-restroom-photo` deliberately disables Supabase's default JWT check because it is invoked from the private operator script, then enforces its own `RELIEF_REVIEW_TOKEN`. Never expose that token to the app or Vercel.
 
 Keep the following values only in your local operator environment—not in Vercel or the app:
 
