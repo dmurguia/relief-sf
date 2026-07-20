@@ -7,3 +7,8 @@ verify_jwt = false
 # The public app can only queue a submitted record by ID. The function performs
 # review server-side with service credentials and persists its result privately.
 verify_jwt = false
+
+[functions.submit-contribution]
+# Anonymous users may submit only validated pending records. The server owns the
+# database insert and immediately queues the private GPT evidence review.
+verify_jwt = false
