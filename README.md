@@ -51,7 +51,8 @@ In the Supabase SQL Editor, run these files in order:
 4. [`supabase/add-place-suggestion-photos.sql`](./supabase/add-place-suggestion-photos.sql)
 5. [`supabase/add-trust-pipeline.sql`](./supabase/add-trust-pipeline.sql)
 6. [`supabase/add-automated-review.sql`](./supabase/add-automated-review.sql)
-7. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
+7. [`supabase/fix-anonymous-submission-rls.sql`](./supabase/fix-anonymous-submission-rls.sql)
+8. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
 
 The final generated file contains 214 current DataSF city restroom records. Regenerate it before a release with:
 
