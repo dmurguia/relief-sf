@@ -311,7 +311,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
-      <View style={styles.mapWrap}><MapCanvas ref={mapRef} restrooms={directory} onSelect={focus} /></View>
+      <View style={styles.mapWrap}><MapCanvas ref={mapRef} restrooms={sortedRestrooms} onSelect={focus} /></View>
 
       <View style={styles.topPanel}>
         <View style={styles.brandRow}><View><Text style={styles.wordmark}>RELIEF</Text><Text style={styles.tagline}>San Francisco restroom finder</Text></View><Pressable accessibilityLabel="Open settings" onPress={() => setShowCoverageLab(true)} style={styles.settingsButton}><Text style={styles.settingsButtonText}>⚙</Text></Pressable></View>
