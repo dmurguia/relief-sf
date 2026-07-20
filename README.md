@@ -101,6 +101,7 @@ Deploy it after installing and logging in to the Supabase CLI:
 supabase secrets set OPENAI_API_KEY=... RELIEF_REVIEW_TOKEN=...
 supabase functions deploy enrich-restroom-photo
 supabase functions deploy review-submission
+supabase functions deploy submit-contribution
 ```
 
 `enrich-restroom-photo` deliberately disables Supabase's default JWT check because it is invoked from the private operator script, then enforces its own `RELIEF_REVIEW_TOKEN`. Never expose that token to the app or Vercel.
