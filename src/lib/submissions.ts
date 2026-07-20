@@ -60,10 +60,25 @@ export async function submitPlaceSuggestion(suggestion: PlaceSuggestion): Promis
         photoNotice = ' Your place was saved, but the photo could not be attached—please try a JPEG or PNG next time.';
       }
     }
-    const response = await fetch(`${url}/rest/v1/place_suggestions`, {
+    const payload = { name: suggestion.name, address: suggestion.address, category: suggestion.category, latitude: suggestion.latitude, longitude: suggestion.longitude, note: suggestion.note || null, access_detail: suggestion.accessDetail || null, cleanliness_rating: suggestion.cleanlinessRating || null, photo_path: photoPath };
+    let response = await fetch(`${url}/rest/v1/place_suggestions`, {
       method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ name: suggestion.name, address: suggestion.address, category: suggestion.category, latitude: suggestion.latitude, longitude: suggestion.longitude, note: suggestion.note || null, access_detail: suggestion.accessDetail || null, cleanliness_rating: suggestion.cleanlinessRating || null, photo_path: photoPath }),
+      body: JSON.stringify(payload),
     });
+    if (!response.ok) {
+      const error = await response.json().catch(() => null) as { code?: string; message?: string } | null;
+      // Older projects can be missing the optional photo column. Preserve the
+      // place lead rather than rejecting it, but never claim its photo was kept.
+      if (error?.code === 'PGRST204' && error.message?.includes('photo_path')) {
+        const { photo_path: _photoPath, ...legacyPayload } = payload;
+        response = await fetch(`${url}/rest/v1/place_suggestions`, {
+          method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify(legacyPayload),
+        });
+        photoPath = null;
+        photoNotice = ' Your place was saved, but the photo could not be linked until the database migration is applied.';
+      }
+    }
     if (!response.ok) throw new Error('Submission failed');
     return { remote: true, message: `It is pending review and will appear on the map only after verification.${photoNotice}` };
   } catch { return { remote: false, message: 'Could not reach the place-review queue. It was not published.' }; }
