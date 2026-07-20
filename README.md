@@ -50,7 +50,8 @@ In the Supabase SQL Editor, run these files in order:
 3. [`supabase/add-cleanliness-ratings.sql`](./supabase/add-cleanliness-ratings.sql)
 4. [`supabase/add-place-suggestion-photos.sql`](./supabase/add-place-suggestion-photos.sql)
 5. [`supabase/add-trust-pipeline.sql`](./supabase/add-trust-pipeline.sql)
-6. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
+6. [`supabase/add-automated-review.sql`](./supabase/add-automated-review.sql)
+7. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
 
 The final generated file contains 214 current DataSF city restroom records. Regenerate it before a release with:
 
@@ -76,7 +77,7 @@ The candidate generator sends one reproducible Overpass query over the San Franc
 
 ## GPT-5.6 photo review
 
-The operator-only Supabase Edge Function in [`supabase/functions/enrich-restroom-photo/index.ts`](./supabase/functions/enrich-restroom-photo/index.ts) receives a pending, contributor-owned restroom photo and returns a constrained JSON proposal: restroom/not-restroom, publish safety, visual description, tags, and concerns. It explicitly rejects people, visible door codes, personal data, and non-restroom photos. A human still decides whether to publish.
+Every new place suggestion or restroom update automatically queues [`supabase/functions/review-submission/index.ts`](./supabase/functions/review-submission/index.ts) after Supabase confirms its insert. The server-side function reads the private contributor photo when present and stores GPT-5.6's structured recommendation, confidence, supported facts, proposed tags, and concerns. It explicitly rejects people, visible door codes, personal data, and non-restroom photos. A human still decides whether to publish.
 
 The novel use of GPT-5.6 is **evidence-constrained review, not location generation**: it converts a private, contributor-owned photo plus the submitted note into a structured moderation proposal; it is forbidden from inferring hours, pricing, door codes, or accessibility compliance. The operator can then accept or reject discrete proposed facts instead of reading every image from scratch. Candidate venues are deliberately kept separate: GPT-5.6 has not been used to declare the OpenStreetMap queue to be verified restrooms.
 
@@ -98,6 +99,7 @@ Deploy it after installing and logging in to the Supabase CLI:
 ```bash
 supabase secrets set OPENAI_API_KEY=... RELIEF_REVIEW_TOKEN=...
 supabase functions deploy enrich-restroom-photo
+supabase functions deploy review-submission
 ```
 
 `enrich-restroom-photo` deliberately disables Supabase's default JWT check because it is invoked from the private operator script, then enforces its own `RELIEF_REVIEW_TOKEN`. Never expose that token to the app or Vercel.
