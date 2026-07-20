@@ -67,7 +67,7 @@ export async function submitRestroomUpdate(update: Update): Promise<{ remote: bo
       });
       if (!photoUpload.ok) throw new Error('Photo upload failed');
     }
-    const inserted = await insertWithOptionalColumns(url, anonKey, 'restroom_updates', { restroom_id: update.restroomId, note: update.note, access_detail: update.accessDetail || null, cleanliness_rating: update.cleanlinessRating || null, photo_path: photoPath }, ['cleanliness_rating', 'photo_path']);
+    const inserted = await insertWithOptionalColumns(url, anonKey, 'restroom_updates', { restroom_id: update.restroomId, note: update.note, access_detail: update.accessDetail || null, cleanliness_rating: update.cleanlinessRating || null, photo_path: photoPath, status: 'pending' }, ['cleanliness_rating', 'photo_path']);
     if (!inserted.ok) throw new Error('Submission failed');
     await queueAutomatedReview(url, anonKey, 'restroom_update', inserted.id);
     const omittedNote = inserted.omitted.length ? ` ${inserted.omitted.includes('photo_path') ? 'The photo' : 'The cleanliness rating'} could not be linked until the database migration is applied.` : '';
@@ -102,7 +102,7 @@ export async function submitPlaceSuggestion(suggestion: PlaceSuggestion): Promis
         photoNotice = ' Your place was saved, but the photo could not be attached—please try a JPEG or PNG next time.';
       }
     }
-    const inserted = await insertWithOptionalColumns(url, key, 'place_suggestions', { name: suggestion.name, address: suggestion.address, category: suggestion.category, latitude: suggestion.latitude, longitude: suggestion.longitude, note: suggestion.note || null, access_detail: suggestion.accessDetail || null, cleanliness_rating: suggestion.cleanlinessRating || null, photo_path: photoPath }, ['cleanliness_rating', 'photo_path']);
+    const inserted = await insertWithOptionalColumns(url, key, 'place_suggestions', { name: suggestion.name, address: suggestion.address, category: suggestion.category, latitude: suggestion.latitude, longitude: suggestion.longitude, note: suggestion.note || null, access_detail: suggestion.accessDetail || null, cleanliness_rating: suggestion.cleanlinessRating || null, photo_path: photoPath, status: 'pending' }, ['cleanliness_rating', 'photo_path']);
     if (!inserted.ok) throw new Error('Submission failed');
     await queueAutomatedReview(url, key, 'place_suggestion', inserted.id);
     if (inserted.omitted.includes('photo_path')) photoNotice = ' Your place was saved, but the photo could not be linked until the database migration is applied.';
