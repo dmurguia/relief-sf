@@ -7,8 +7,9 @@ const token = () => process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
 const searchVariants = (query: string) => {
   const clean = query.trim();
   const variants = [clean];
-  // Mapbox indexes this SF business under its current brand name, RH.
-  if (/restoration\s+hardware/i.test(clean)) variants.push(clean.replace(/restoration\s+hardware/ig, 'RH'));
+  // Mapbox indexes this SF business under its current brand name, RH. Adding
+  // the city avoids irrelevant "Rhode Island" matches from the short brand.
+  if (/restoration\s+hardware/i.test(clean)) variants.push('RH San Francisco');
   return [...new Set(variants)];
 };
 
