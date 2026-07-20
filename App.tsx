@@ -77,7 +77,7 @@ export default function App() {
   const [showCoverageLab, setShowCoverageLab] = useState(false);
   const [coverageScope, setCoverageScope] = useState<'San Francisco' | 'New York' | 'SoMa' | 'Golden Gate Park' | 'Mission'>('San Francisco');
   const [placeSuggestion, setPlaceSuggestion] = useState({ name: '', address: '', category: 'Coffee', note: '', photoUri: '', accessChoice: '', features: [] as string[], cleanlinessRating: 0 });
-  const [reviewConfirmation, setReviewConfirmation] = useState<{ placeName: string; photoStatus: 'attached' | 'retry' | 'none' } | null>(null);
+  const [reviewConfirmation, setReviewConfirmation] = useState<{ kind: 'place' | 'update'; placeName: string; photoStatus: 'attached' | 'retry' | 'none' } | null>(null);
   const [businessQuery, setBusinessQuery] = useState('');
   const [businessMatches, setBusinessMatches] = useState<PlaceSuggestionResult[]>([]);
   const [pickedBusiness, setPickedBusiness] = useState<PickedPlace | null>(null);
@@ -224,15 +224,27 @@ export default function App() {
   };
 
   const sendContribution = async () => {
-    if (!contributionRestroom || !contribution.note.trim()) return;
-    setSubmitting(true);
+    if (!contributionRestroom) return;
     const details = [contribution.access, contribution.accessChoice, ...contribution.features].filter(Boolean).join(' · ');
-    const result = await submitRestroomUpdate({ restroomId: contributionRestroom.id, note: contribution.note, accessDetail: details || undefined, cleanlinessRating: contribution.cleanlinessRating || undefined, photoUri: contribution.photoUri || undefined });
-    setSubmitting(false);
-    setShowContribution(false);
-    setContributionRestroom(null);
-    setContribution({ note: '', access: '', photoUri: '', accessChoice: '', features: [], cleanlinessRating: 0 });
-    Alert.alert(result.remote ? 'Thanks — update submitted' : 'Saved for this demo', result.message);
+    const hasEvidence = Boolean(contribution.note.trim() || contribution.photoUri || details || contribution.cleanlinessRating);
+    if (!hasEvidence) return;
+    setSubmitting(true);
+    try {
+      const note = contribution.note.trim() || (contribution.photoUri ? 'Contributor submitted a restroom-only photo for review.' : 'Contributor submitted structured restroom details for review.');
+      const result = await submitRestroomUpdate({ restroomId: contributionRestroom.id, note, accessDetail: details || undefined, cleanlinessRating: contribution.cleanlinessRating || undefined, photoUri: contribution.photoUri || undefined });
+      if (!result.remote) {
+        Alert.alert('Update not submitted', result.message);
+        return;
+      }
+      const photoStatus: 'attached' | 'retry' | 'none' = contribution.photoUri ? (result.message.includes('could not') ? 'retry' : 'attached') : 'none';
+      const placeName = contributionRestroom.name;
+      setShowContribution(false);
+      setContributionRestroom(null);
+      setContribution({ note: '', access: '', photoUri: '', accessChoice: '', features: [], cleanlinessRating: 0 });
+      setReviewConfirmation({ kind: 'update', placeName, photoStatus });
+    } catch {
+      Alert.alert('Update not submitted', 'We could not reach the review queue. Nothing was added—please try again in a moment.');
+    } finally { setSubmitting(false); }
   };
 
   const openContribution = (restroom: Restroom) => {
@@ -286,7 +298,7 @@ export default function App() {
       setPlaceSuggestion({ name: '', address: '', category: 'Coffee', note: '', photoUri: '', accessChoice: '', features: [], cleanlinessRating: 0 });
       setBusinessQuery(''); setPickedBusiness(null); setBusinessMatches([]);
       setQuery(''); setSearchFocused(false); setMainBusinessMatches([]);
-      setReviewConfirmation({ placeName, photoStatus });
+      setReviewConfirmation({ kind: 'place', placeName, photoStatus });
     } catch {
       Alert.alert('Suggestion not submitted', 'We could not reach the review queue. Nothing was added—please try again in a moment.');
     } finally { setSubmitting(false); }
@@ -343,13 +355,13 @@ export default function App() {
       </Modal>
 
       <Modal visible={showContribution} animationType="slide" transparent onRequestClose={() => setShowContribution(false)}>
-          <View style={styles.contributionSheet}><Text style={styles.contributionTitle}>Keep {contributionRestroom?.name ?? 'this place'} current</Text><Text style={styles.contributionCopy}>Your update is reviewed before it appears. Do not include restroom door codes or people in photos.</Text><TextInput style={styles.noteInput} value={contribution.note} onChangeText={(note) => setContribution((current) => ({ ...current, note }))} placeholder="What changed? E.g. clean, closed, no purchase needed…" placeholderTextColor="#838A83" multiline />
+          <View style={styles.contributionSheet}><Text style={styles.contributionTitle}>Keep {contributionRestroom?.name ?? 'this place'} current</Text><Text style={styles.contributionCopy}>Share a photo, rating, tag, or note—any one is enough. Your update is reviewed before it appears.</Text><TextInput style={styles.noteInput} value={contribution.note} onChangeText={(note) => setContribution((current) => ({ ...current, note }))} placeholder="What changed? (optional)" placeholderTextColor="#838A83" multiline />
           <Text style={styles.fieldLabel}>ACCESS</Text><View style={styles.optionRow}>{['Free', 'Code required', 'Purchase expected', 'Ask staff'].map((option) => <Pressable key={option} onPress={() => setContribution((current) => ({ ...current, accessChoice: current.accessChoice === option ? '' : option }))} style={[styles.option, contribution.accessChoice === option && styles.optionActive]}><Text style={[styles.optionText, contribution.accessChoice === option && styles.optionTextActive]}>{option}</Text></Pressable>)}</View>
           <Text style={styles.fieldLabel}>RESTROOM DETAILS</Text><View style={styles.optionRow}>{['All-gender', 'Accessible', 'Changing table', 'Clean', 'Needs attention'].map((option) => <Pressable key={option} onPress={() => toggleFeature(option)} style={[styles.option, contribution.features.includes(option) && styles.optionActive]}><Text style={[styles.optionText, contribution.features.includes(option) && styles.optionTextActive]}>{option}</Text></Pressable>)}</View>
           <Text style={styles.fieldLabel}>CLEANLINESS</Text><RatingPicker value={contribution.cleanlinessRating} onChange={(cleanlinessRating) => setContribution((current) => ({ ...current, cleanlinessRating }))} />
           <TextInput style={styles.accessInput} value={contribution.access} onChangeText={(access) => setContribution((current) => ({ ...current, access }))} placeholder="Access detail (optional)" placeholderTextColor="#838A83" />
           <PhotoSelection uri={contribution.photoUri} onChoose={choosePhoto} onRemove={() => setContribution((current) => ({ ...current, photoUri: '' }))} />
-          <View style={styles.detailActions}><Pressable style={styles.cancel} onPress={() => { setShowContribution(false); setContributionRestroom(null); }}><Text style={styles.cancelText}>Cancel</Text></Pressable><Pressable style={styles.directions} onPress={sendContribution} disabled={submitting || !contribution.note.trim()}><Text style={styles.directionsText}>{submitting ? 'Sending…' : 'Submit update'}</Text></Pressable></View>
+          <View style={styles.detailActions}><Pressable style={styles.cancel} onPress={() => { setShowContribution(false); setContributionRestroom(null); }}><Text style={styles.cancelText}>Cancel</Text></Pressable><Pressable style={styles.directions} onPress={sendContribution} disabled={submitting || !(contribution.note.trim() || contribution.photoUri || contribution.access || contribution.accessChoice || contribution.features.length || contribution.cleanlinessRating)}><Text style={styles.directionsText}>{submitting ? 'Sending…' : 'Submit update'}</Text></Pressable></View>
         </View>
       </Modal>
       <Modal visible={showPlaceSuggestion} animationType="slide" transparent onRequestClose={() => setShowPlaceSuggestion(false)}>
@@ -370,8 +382,8 @@ export default function App() {
         <View style={styles.confirmationBackdrop}>
           <View style={styles.confirmationCard}>
             <View style={styles.confirmationMark}><Text style={styles.confirmationMarkText}>✓</Text></View>
-            <Text style={styles.confirmationEyebrow}>SENT TO REVIEW</Text>
-            <Text style={styles.confirmationTitle}>Suggestion received</Text>
+            <Text style={styles.confirmationEyebrow}>{reviewConfirmation?.kind === 'update' ? 'UPDATE RECEIVED' : 'SENT TO REVIEW'}</Text>
+            <Text style={styles.confirmationTitle}>{reviewConfirmation?.kind === 'update' ? 'Thanks for the update' : 'Suggestion received'}</Text>
             <Text style={styles.confirmationCopy}><Text style={styles.confirmationPlace}>{reviewConfirmation?.placeName}</Text> is now in Relief’s private review queue.</Text>
             <View style={styles.confirmationQueue}>
               <Text style={styles.confirmationQueueLabel}>WHAT HAPPENS NEXT</Text>
