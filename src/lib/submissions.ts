@@ -41,22 +41,30 @@ export async function submitPlaceSuggestion(suggestion: PlaceSuggestion): Promis
   if (!url || !key) return { remote: false, message: 'Connect Supabase to send this place for review.' };
   try {
     let photoPath: string | null = null;
+    let photoNotice = '';
     if (suggestion.photoUri) {
-      const image = await fetch(suggestion.photoUri);
-      const imageBlob = await image.blob();
-      photoPath = `pending/place-suggestion/${Date.now()}.jpg`;
-      const photoUpload = await fetch(`${url}/storage/v1/object/restroom-submissions/${photoPath}`, {
-        method: 'POST',
-        headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': imageBlob.type || 'image/jpeg', 'x-upsert': 'false' },
-        body: imageBlob,
-      });
-      if (!photoUpload.ok) throw new Error('Photo upload failed');
+      try {
+        const image = await fetch(suggestion.photoUri);
+        const imageBlob = await image.blob();
+        photoPath = `pending/place-suggestion/${Date.now()}.jpg`;
+        const photoUpload = await fetch(`${url}/storage/v1/object/restroom-submissions/${photoPath}`, {
+          method: 'POST',
+          headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': imageBlob.type || 'image/jpeg', 'x-upsert': 'false' },
+          body: imageBlob,
+        });
+        if (!photoUpload.ok) throw new Error('Photo upload failed');
+      } catch {
+        // A photo is helpful but optional. Never discard a useful place lead
+        // because a device format or upload connection rejected its image.
+        photoPath = null;
+        photoNotice = ' Your place was saved, but the photo could not be attached—please try a JPEG or PNG next time.';
+      }
     }
     const response = await fetch(`${url}/rest/v1/place_suggestions`, {
       method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ name: suggestion.name, address: suggestion.address, category: suggestion.category, latitude: suggestion.latitude, longitude: suggestion.longitude, note: suggestion.note || null, access_detail: suggestion.accessDetail || null, cleanliness_rating: suggestion.cleanlinessRating || null, photo_path: photoPath }),
     });
     if (!response.ok) throw new Error('Submission failed');
-    return { remote: true, message: 'It is pending review and will appear on the map only after verification.' };
+    return { remote: true, message: `It is pending review and will appear on the map only after verification.${photoNotice}` };
   } catch { return { remote: false, message: 'Could not reach the place-review queue. It was not published.' }; }
 }
