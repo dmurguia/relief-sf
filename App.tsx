@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import { Analytics } from '@vercel/analytics/react';
 import {
   useCallback,
   useEffect,
@@ -294,6 +295,7 @@ export default function App() {
           <View style={styles.detailActions}><Pressable style={styles.cancel} onPress={() => { setShowPlaceSuggestion(false); setBusinessQuery(''); setPickedBusiness(null); setBusinessMatches([]); }}><Text style={styles.cancelText}>Cancel</Text></Pressable><Pressable style={styles.directions} onPress={sendPlaceSuggestion} disabled={submitting || !pickedBusiness}><Text style={styles.directionsText}>{submitting ? 'Sending…' : 'Suggest place'}</Text></Pressable></View>
         </View>
       </Modal>
+      {Platform.OS === 'web' && <Analytics />}
     </SafeAreaView>
   );
 }
