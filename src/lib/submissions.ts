@@ -1,8 +1,10 @@
 type Update = { restroomId: string; note: string; accessDetail?: string; cleanlinessRating?: number; photoUri?: string };
 type PlaceSuggestion = { name: string; address: string; category: string; note: string; accessDetail?: string; cleanlinessRating?: number; photoUri?: string; latitude: number; longitude: number };
 type JsonValue = string | number | null;
+type SubmissionKind = 'place_suggestion' | 'restroom_update';
+type InsertResult = { ok: boolean; omitted: string[]; id?: string };
 
-async function insertWithOptionalColumns(url: string, key: string, table: string, payload: Record<string, JsonValue>, optionalColumns: string[]) {
+async function insertWithOptionalColumns(url: string, key: string, table: string, payload: Record<string, JsonValue>, optionalColumns: string[]): Promise<InsertResult> {
   const workingPayload = { ...payload };
   const omitted: string[] = [];
   let response: Response | null = null;
@@ -10,10 +12,13 @@ async function insertWithOptionalColumns(url: string, key: string, table: string
   for (let attempt = 0; attempt <= optionalColumns.length; attempt += 1) {
     response = await fetch(`${url}/rest/v1/${table}`, {
       method: 'POST',
-      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
       body: JSON.stringify(workingPayload),
     });
-    if (response.ok) return { ok: true, omitted };
+    if (response.ok) {
+      const rows = await response.json().catch(() => []) as Array<{ id?: string }>;
+      return { ok: true, omitted, id: rows[0]?.id };
+    }
 
     const error = await response.json().catch(() => null) as { code?: string; message?: string } | null;
     const missingColumn = error?.code === 'PGRST204'
@@ -24,7 +29,20 @@ async function insertWithOptionalColumns(url: string, key: string, table: string
     omitted.push(missingColumn);
   }
 
-  return { ok: Boolean(response?.ok), omitted };
+  return { ok: false, omitted };
+}
+
+async function queueAutomatedReview(url: string, key: string, entityType: SubmissionKind, submissionId?: string) {
+  if (!submissionId) return;
+  try {
+    await fetch(`${url}/functions/v1/review-submission`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityType, submissionId }),
+    });
+  } catch {
+    // The submission remains pending and can be retried by the protected operator.
+  }
 }
 
 const localUpdates: Update[] = [];
@@ -51,6 +69,7 @@ export async function submitRestroomUpdate(update: Update): Promise<{ remote: bo
     }
     const inserted = await insertWithOptionalColumns(url, anonKey, 'restroom_updates', { restroom_id: update.restroomId, note: update.note, access_detail: update.accessDetail || null, cleanliness_rating: update.cleanlinessRating || null, photo_path: photoPath }, ['cleanliness_rating', 'photo_path']);
     if (!inserted.ok) throw new Error('Submission failed');
+    await queueAutomatedReview(url, anonKey, 'restroom_update', inserted.id);
     const omittedNote = inserted.omitted.length ? ` ${inserted.omitted.includes('photo_path') ? 'The photo' : 'The cleanliness rating'} could not be linked until the database migration is applied.` : '';
     return { remote: true, message: `It is pending moderation and will not change the map until reviewed.${omittedNote}` };
   } catch {
@@ -85,6 +104,7 @@ export async function submitPlaceSuggestion(suggestion: PlaceSuggestion): Promis
     }
     const inserted = await insertWithOptionalColumns(url, key, 'place_suggestions', { name: suggestion.name, address: suggestion.address, category: suggestion.category, latitude: suggestion.latitude, longitude: suggestion.longitude, note: suggestion.note || null, access_detail: suggestion.accessDetail || null, cleanliness_rating: suggestion.cleanlinessRating || null, photo_path: photoPath }, ['cleanliness_rating', 'photo_path']);
     if (!inserted.ok) throw new Error('Submission failed');
+    await queueAutomatedReview(url, key, 'place_suggestion', inserted.id);
     if (inserted.omitted.includes('photo_path')) photoNotice = ' Your place was saved, but the photo could not be linked until the database migration is applied.';
     if (inserted.omitted.includes('cleanliness_rating')) photoNotice += ' Your cleanliness rating could not be linked until the database migration is applied.';
     return { remote: true, message: `It is pending review and will appear on the map only after verification.${photoNotice}` };

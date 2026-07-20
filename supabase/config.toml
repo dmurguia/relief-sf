@@ -2,3 +2,8 @@
 # This endpoint is protected by the private x-relief-review-token checked in its code.
 # It cannot be invoked from the public app; do not put that token in EXPO_PUBLIC_* or Vercel.
 verify_jwt = false
+
+[functions.review-submission]
+# The public app can only queue a submitted record by ID. The function performs
+# review server-side with service credentials and persists its result privately.
+verify_jwt = false
