@@ -1,6 +1,6 @@
 const { authorized, configured, count, rejectUnauthorized, signedPhotoUrl, supabase } = require('./_shared');
 
-const decision = (row) => row.ai_review?.decision || null;
+const decision = (row) => row.aiReview?.decision || row.ai_review?.decision || null;
 const titleForUpdate = (row) => row.restrooms?.name || 'Restroom update';
 const defaultAutopilot = { enabled: false, confidenceThreshold: 0.92, configured: false };
 
