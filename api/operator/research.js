@@ -26,6 +26,8 @@ async function researchData() {
 const explicitRestroomEvidence = (lead) => lead.venue_type === 'toilets' || /\b(toilet|restroom|bathroom)\b/i.test(lead.evidence_note || '');
 
 module.exports = async function research(req, res) {
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   if (!configured()) return res.status(503).json({ error: 'Operator API is not configured.' });
   if (!authorized(req)) return rejectUnauthorized(res);
   if (req.method === 'GET') {

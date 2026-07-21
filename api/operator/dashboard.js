@@ -77,6 +77,8 @@ function formatResearchRows(rows) {
 }
 
 module.exports = async function dashboard(req, res) {
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed.' });
   if (!configured()) return res.status(503).json({ error: 'Operator API is not configured. Add OPERATOR_PASSWORD, SUPABASE_URL, and SUPABASE_SERVICE_ROLE_KEY in Vercel.' });
   if (!authorized(req)) return rejectUnauthorized(res);
