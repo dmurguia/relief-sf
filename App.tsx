@@ -33,6 +33,7 @@ import { categories, Restroom, sfDefaultRegion } from './src/data/restrooms';
 import { placeMapPreview, retrieveBusiness, suggestBusinesses, type PickedPlace, type PlaceSuggestionResult } from './src/lib/mapboxPlaces';
 import { fallbackDirectory, loadApprovedRestrooms } from './src/lib/restroomDirectory';
 import { submitRestroomUpdate } from './src/lib/submissions';
+import OperatorConsole from './src/components/OperatorConsole';
 
 const metersBetween = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
   const rad = Math.PI / 180;
@@ -68,6 +69,9 @@ const matchesDiscoveryFilter = (restroom: Restroom, filter: (typeof discoveryFil
 };
 
 export default function App() {
+  // Vercel rewrites /operator to this Expo web entry point. Keep the private
+  // console outside the public-map component so no public state leaks into it.
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname === '/operator') return <OperatorConsole />;
   const mapRef = useRef<MapCanvasHandle>(null);
   const [region, setRegion] = useState<Region>(sfDefaultRegion);
   const [directory, setDirectory] = useState<Restroom[]>(fallbackDirectory);
@@ -87,8 +91,6 @@ export default function App() {
   const [contributionRestroom, setContributionRestroom] = useState<Restroom | null>(null);
   const [contribution, setContribution] = useState({ note: '', access: '', photoUri: '', accessChoice: '', features: [] as string[], cleanlinessRating: 0 });
   const [showPlaceSuggestion, setShowPlaceSuggestion] = useState(false);
-  const [showCoverageLab, setShowCoverageLab] = useState(false);
-  const [coverageScope, setCoverageScope] = useState<'San Francisco' | 'New York' | 'SoMa' | 'Golden Gate Park' | 'Mission'>('San Francisco');
   const [placeSuggestion, setPlaceSuggestion] = useState({ name: '', address: '', category: 'Coffee', note: '', photoUri: '', accessChoice: '', features: [] as string[], cleanlinessRating: 0 });
   const [reviewConfirmation, setReviewConfirmation] = useState<{ kind: 'place' | 'update'; placeName: string; photoStatus: 'attached' | 'retry' | 'none' } | null>(null);
   const [businessQuery, setBusinessQuery] = useState('');
@@ -332,7 +334,7 @@ export default function App() {
       <View style={styles.mapWrap}><MapCanvas ref={mapRef} restrooms={sortedRestrooms} onSelect={focus} /></View>
 
       <View style={styles.topPanel}>
-        <View style={styles.brandRow}><View><Text style={styles.wordmark}>RELIEF</Text><Text style={styles.tagline}>San Francisco restroom finder</Text></View><Pressable accessibilityLabel="Open settings" onPress={() => setShowCoverageLab(true)} style={styles.settingsButton}><Text style={styles.settingsButtonText}>⚙</Text></Pressable></View>
+        <View style={styles.brandRow}><View><Text style={styles.wordmark}>RELIEF</Text><Text style={styles.tagline}>San Francisco restroom finder</Text></View><Pressable accessibilityLabel="Open operator console" onPress={() => { if (Platform.OS === 'web' && typeof window !== 'undefined') window.location.assign('/operator'); else Linking.openURL('https://relief-sf.vercel.app/operator'); }} style={styles.settingsButton}><Text style={styles.settingsButtonText}>⚙</Text></Pressable></View>
         <View style={styles.searchRow}>
           <TextInput value={query} onChangeText={setQuery} onFocus={() => setSearchFocused(true)} onSubmitEditing={searchAddress} placeholder="Search restrooms, parks & places" placeholderTextColor="#8A918B" selectionColor="#C95B34" style={[styles.searchInput, Platform.OS === 'web' && ({ outlineStyle: 'none', outlineWidth: 0 } as any)]} returnKeyType="search" />
           <Pressable accessibilityLabel="Open filters" accessibilityHint="Filter by availability, access, or indoor restrooms" onPress={() => { Keyboard.dismiss(); setSearchFocused(false); setShowFilters(true); }} style={[styles.searchFilterButton, (openOnly || selectedFilters.length > 0) && styles.searchFilterButtonActive]}><View style={styles.filterGlyph}><View style={[styles.filterGlyphLine, styles.filterGlyphLineTop]} /><View style={[styles.filterGlyphLine, styles.filterGlyphLineMiddle]} /><View style={[styles.filterGlyphLine, styles.filterGlyphLineBottom]} /></View>{(openOnly || selectedFilters.length > 0) && <View style={styles.filterBadge}><Text style={styles.filterBadgeText}>{Number(openOnly) + selectedFilters.length}</Text></View>}</Pressable>
@@ -423,20 +425,6 @@ export default function App() {
             {reviewConfirmation?.photoStatus === 'retry' && <Text style={styles.confirmationPhoto}>The place was sent, but the photo needs to be uploaded again.</Text>}
             <Pressable style={styles.confirmationButton} onPress={() => setReviewConfirmation(null)}><Text style={styles.confirmationButtonText}>Back to map</Text></Pressable>
           </View>
-        </View>
-      </Modal>
-      <Modal visible={showCoverageLab} animationType="slide" transparent onRequestClose={() => setShowCoverageLab(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowCoverageLab(false)} />
-        <View style={styles.coverageSheet}>
-          <View style={styles.sheetHandle} />
-          <View style={styles.detailTop}><View><Text style={styles.coverageEyebrow}>OPERATOR SETTINGS</Text><Text style={styles.contributionTitle}>Coverage Lab</Text></View><Pressable onPress={() => setShowCoverageLab(false)}><Text style={styles.close}>×</Text></Pressable></View>
-          <Text style={styles.contributionCopy}>Launch the next evidence-backed candidate run. A job can create leads at scale; it can never publish a place automatically.</Text>
-          <View style={styles.coverageStats}><View style={styles.coverageStat}><Text style={styles.coverageNumber}>214</Text><Text style={styles.coverageCaption}>SF verified</Text></View><View style={styles.coverageStat}><Text style={styles.coverageNumber}>{coverageScope === 'San Francisco' ? '3,444' : '—'}</Text><Text style={styles.coverageCaption}>{coverageScope === 'San Francisco' ? 'SF candidates' : 'pending queue'}</Text></View><View style={styles.coverageStat}><Text style={styles.coverageNumber}>100%</Text><Text style={styles.coverageCaption}>human-gated</Text></View></View>
-          <Text style={styles.fieldLabel}>EXPLORE NEXT</Text>
-          <View style={styles.optionRow}>{(['San Francisco', 'New York', 'SoMa', 'Golden Gate Park', 'Mission'] as const).map((scope) => <Pressable key={scope} onPress={() => setCoverageScope(scope)} style={[styles.option, coverageScope === scope && styles.optionActive]}><Text style={[styles.optionText, coverageScope === scope && styles.optionTextActive]}>{scope}</Text></Pressable>)}</View>
-          <View style={styles.coverageBrief}><Text style={styles.coverageBriefTitle}>{coverageScope === 'New York' ? 'Queue New York candidate review' : `Explore ${coverageScope}`}</Text><Text style={styles.coverageBriefCopy}>{coverageScope === 'New York' ? 'New York is staged as a city configuration: permitted sources → evidence-backed candidate leads → GPT-5.6 proposed tags → human review. The SF map remains the only active public city until a reviewer approves New York records.' : 'Agents collect only permitted city, open-data, and official-business evidence; deduplicate venue leads; then place them in the private candidate queue for GPT-5.6-assisted extraction and human review.'}</Text><Text style={styles.coverageGuardrail}>Scale candidate review—not unverified public listings.</Text></View>
-          <View style={styles.operatorNotice}><Text style={styles.operatorNoticeTitle}>Private operator action required</Text><Text style={styles.operatorNoticeCopy}>For safety, public visitors cannot launch collection jobs. Queue this scope from the protected operator workspace, then review candidates before approval.</Text></View>
-          <Pressable style={styles.directions} onPress={() => Alert.alert('Candidate run scoped', `${coverageScope} is prepared for a private evidence-collection and candidate-review run. No locations will be visible in Relief until a human approves them.`)}><Text style={styles.directionsText}>Prepare candidate review brief</Text></Pressable>
         </View>
       </Modal>
     </SafeAreaView>

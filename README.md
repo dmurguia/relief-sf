@@ -84,7 +84,7 @@ The novel use of GPT-5.6 is **evidence-constrained review, not location generati
 
 ### Coverage expansion jobs
 
-Run [`supabase/add-exploration-jobs.sql`](./supabase/add-exploration-jobs.sql) once. The in-app Settings → Coverage Lab shows an operator-facing scope brief, but cannot launch work from the public client. Create a protected job locally only after setting a service-role key:
+Run [`supabase/add-exploration-jobs.sql`](./supabase/add-exploration-jobs.sql) once. Coverage jobs are private and never publish a place automatically. Create a protected job locally only after setting a service-role key:
 
 ```bash
 node scripts/queue-exploration-job.mjs neighborhood "SoMa"
@@ -113,7 +113,21 @@ SUPABASE_SERVICE_ROLE_KEY=...
 RELIEF_REVIEW_TOKEN=...
 ```
 
-Review pending records:
+## Operator workspace
+
+Open `/operator` on the deployed judge URL. It is a deliberately simple demo gate: one shared password, no user accounts. The operator page has a live human-review queue, high-level moderation stats, and an audit tab that exposes GPT's stored reason, proposed tags, submission metadata, and a short-lived signed URL for the contributor-owned photo.
+
+Add these **server-only** variables to the existing `relief-sf` Vercel project (Production and Preview), then redeploy from Git:
+
+```env
+OPERATOR_PASSWORD=choose-a-shared-demo-password
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-secret-key
+```
+
+`SUPABASE_SERVICE_ROLE_KEY` must never be prefixed with `EXPO_PUBLIC_`, committed, or placed in the client `.env`. Vercel functions use it only to read the private moderation tables, create expiring photo URLs, and make an explicit human-approved place public. The password gate is intentionally minimal for this hackathon demo; it is not a multi-user production authentication system.
+
+Review pending records from the browser, or use the local operator script when developing:
 
 ```bash
 node scripts/moderate.mjs pending
