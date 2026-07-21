@@ -1,6 +1,6 @@
 # Relief — San Francisco restroom finder
 
-Relief helps someone find a usable restroom before it becomes an emergency. It deliberately separates **city-verified restrooms** from **unverified venue leads**, then uses GPT-5.6 to help a human reviewer assess contributor-owned restroom photos and evidence.
+Relief helps someone find a usable restroom before it becomes an emergency. It deliberately separates **city-verified restrooms** from **unverified venue leads**, then uses GPT-5.6 to assess contributor-owned restroom photos and evidence.
 
 ## What judges can try
 
@@ -8,14 +8,14 @@ Relief helps someone find a usable restroom before it becomes an emergency. It d
 - iOS demo: `npm run ios`
 - Main flow: search the map, tap **I'M FEELING LUCKY**, inspect a restroom, then submit an anonymous update or suggest an existing business through Mapbox search
 
-There is no account requirement. Public submissions always remain `pending` until an operator reviews them.
+There is no account requirement. Public submissions remain `pending` by default; an operator can explicitly enable a bounded GPT autopilot for high-confidence, safe, photo-backed submissions.
 
 ## Trust model
 
 | Layer | What it means | Visible on the map? |
 | --- | --- | --- |
 | City-verified | City of San Francisco public restroom asset from DataSF | Yes |
-| Community-verified | A place approved after a human reviews supported evidence | Yes |
+| Community-verified | A place approved after human review or a strict GPT autopilot policy | Yes |
 | Candidate venue | An open-data/official-source lead that may have a restroom | No |
 | Anonymous update | Community report, rating, or contributor-owned restroom photo | No, until reviewed |
 
@@ -52,7 +52,8 @@ In the Supabase SQL Editor, run these files in order:
 5. [`supabase/add-trust-pipeline.sql`](./supabase/add-trust-pipeline.sql)
 6. [`supabase/add-automated-review.sql`](./supabase/add-automated-review.sql)
 7. [`supabase/fix-anonymous-submission-rls.sql`](./supabase/fix-anonymous-submission-rls.sql)
-8. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
+8. [`supabase/add-autopilot-policy.sql`](./supabase/add-autopilot-policy.sql)
+9. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
 
 The final generated file contains 214 current DataSF city restroom records. Regenerate it before a release with:
 
@@ -78,9 +79,15 @@ The candidate generator sends one reproducible Overpass query over the San Franc
 
 ## GPT-5.6 photo review
 
-Every new place suggestion or restroom update automatically queues [`supabase/functions/review-submission/index.ts`](./supabase/functions/review-submission/index.ts) after Supabase confirms its insert. The server-side function reads the private contributor photo when present and stores GPT-5.6's structured recommendation, confidence, supported facts, proposed tags, and concerns. It explicitly rejects people, visible door codes, personal data, and non-restroom photos. A human still decides whether to publish.
+Every new place suggestion or restroom update automatically queues [`supabase/functions/review-submission/index.ts`](./supabase/functions/review-submission/index.ts) after Supabase confirms its insert. The server-side function reads the private contributor photo when present and stores GPT-5.6's structured recommendation, confidence, supported facts, proposed tags, and concerns. It explicitly rejects people, visible door codes, personal data, and non-restroom photos.
 
 The novel use of GPT-5.6 is **evidence-constrained review, not location generation**: it converts a private, contributor-owned photo plus the submitted note into a structured moderation proposal; it is forbidden from inferring hours, pricing, door codes, or accessibility compliance. The operator can then accept or reject discrete proposed facts instead of reading every image from scratch. Candidate venues are deliberately kept separate: GPT-5.6 has not been used to declare the OpenStreetMap queue to be verified restrooms.
+
+### Bounded GPT autopilot
+
+Operator Review includes a single autopilot control, **off by default**, with a selectable confidence threshold of 90%, 92%, or 95%. It can auto-publish only a contributor submission with a contributor-owned restroom photo, sufficient GPT confidence, a photo GPT marks safe (no people, readable door codes, or personal information), no GPT concerns, and a coherent located suggestion or existing-restroom update.
+
+Research leads can never use autopilot. Every autopublished or auto-applied change carries an `autopilot` action in the operator trace, and the operator can turn the policy off at any time.
 
 ### Coverage expansion jobs
 

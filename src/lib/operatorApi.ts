@@ -14,7 +14,7 @@ export type OperatorSubmission = {
   aiReviewStatus: 'queued' | 'reviewing' | 'reviewed' | 'error';
   aiReviewedAt: string | null;
   aiReviewError: string | null;
-  aiReview: { decision?: ReviewDecision; confidence?: number; reason?: string; description?: string; proposed_tags?: string[]; concerns?: string[]; operator_actions?: Array<{ action: string; at: string; applied_fields?: string[] }> } | null;
+  aiReview: { decision?: ReviewDecision; confidence?: number; reason?: string; description?: string; proposed_tags?: string[]; concerns?: string[]; operator_actions?: Array<{ action: string; at: string; actor?: 'autopilot'; applied_fields?: string[] }> } | null;
   photoUrl: string | null;
   photoPath: string | null;
 };
@@ -26,7 +26,10 @@ export type OperatorDashboard = {
   operatorApproved: OperatorSubmission[];
   rejected: OperatorSubmission[];
   audit: OperatorSubmission[];
+  autopilot: AutopilotPolicy;
 };
+
+export type AutopilotPolicy = { enabled: boolean; confidenceThreshold: number; configured: boolean };
 
 export type ResearchLead = { id: string; name: string; address: string | null; venue_type: string; source_name: string; source_url: string | null; source_license: string | null; evidence_note: string | null; status: 'pending' | 'rejected'; ai_proposal: { route?: 'evidence_collection' | 'needs_judgment' | 'reject'; confidence?: number; reason?: string; evidence_needed?: string; processed_at?: string } | null };
 export type ResearchLeads = { stats: { total: number; triaged: number; remaining: number; rejected: number }; leads: ResearchLead[] };
@@ -45,3 +48,4 @@ export const autoApproveGptReady = () => request('/api/operator/review', { metho
 export const operatorLogout = () => request('/api/operator/logout', { method: 'POST' });
 export const loadResearchLeads = () => request('/api/operator/research') as Promise<ResearchLeads>;
 export const processResearchLeads = (ids?: string[]) => request('/api/operator/research', { method: 'POST', body: JSON.stringify({ ids, limit: 100 }) }) as Promise<{ ok: boolean; processed: number; routeCounts?: Record<string, number>; message: string }>;
+export const saveAutopilotPolicy = (enabled: boolean, confidenceThreshold: number) => request('/api/operator/autopilot', { method: 'POST', body: JSON.stringify({ enabled, confidenceThreshold }) }) as Promise<AutopilotPolicy>;
