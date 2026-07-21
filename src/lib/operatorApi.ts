@@ -37,7 +37,9 @@ export type ResearchLead = { id: string; name: string; address: string | null; v
 export type ResearchLeads = { stats: { total: number; triaged: number; remaining: number; rejected: number; published: number }; leads: ResearchLead[] };
 
 async function request(path: string, init?: RequestInit) {
-  const response = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }, ...init });
+  const isRead = !init?.method || init.method === 'GET';
+  const requestPath = isRead ? `${path}${path.includes('?') ? '&' : '?'}_=${Date.now()}` : path;
+  const response = await fetch(requestPath, { credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', ...(init?.headers || {}) }, ...init });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Operator request failed.');
   return data;
