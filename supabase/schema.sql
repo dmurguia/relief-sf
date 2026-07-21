@@ -42,6 +42,19 @@ create policy "approved restrooms are readable" on restrooms for select using (v
 create policy "anonymous updates can be submitted" on restroom_updates for insert with check (status = 'pending');
 -- Do not add an anonymous select/update policy on restroom_updates. Review from the Supabase dashboard.
 
+-- One service-role-only policy controls bounded GPT autopilot. There are no
+-- anonymous policies: public clients can neither read nor change this state.
+create table if not exists operator_autopilot_settings (
+  id boolean primary key default true check (id = true),
+  enabled boolean not null default false,
+  confidence_threshold numeric(3,2) not null default 0.92 check (confidence_threshold between 0.85 and 0.99),
+  updated_at timestamptz not null default now()
+);
+alter table operator_autopilot_settings enable row level security;
+insert into operator_autopilot_settings (id, enabled, confidence_threshold)
+values (true, false, 0.92)
+on conflict (id) do nothing;
+
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('restroom-submissions', 'restroom-submissions', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do nothing;

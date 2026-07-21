@@ -2,6 +2,17 @@ const { authorized, configured, count, rejectUnauthorized, signedPhotoUrl, supab
 
 const decision = (row) => row.ai_review?.decision || null;
 const titleForUpdate = (row) => row.restrooms?.name || 'Restroom update';
+const defaultAutopilot = { enabled: false, confidenceThreshold: 0.92, configured: false };
+
+async function loadAutopilot() {
+  try {
+    const { body } = await supabase('/rest/v1/operator_autopilot_settings?id=eq.true&select=enabled,confidence_threshold');
+    const setting = body?.[0];
+    return setting ? { enabled: Boolean(setting.enabled), confidenceThreshold: Number(setting.confidence_threshold), configured: true } : defaultAutopilot;
+  } catch {
+    return defaultAutopilot;
+  }
+}
 
 async function formatRows(rows, entityType) {
   return Promise.all(rows.map(async (row) => ({
@@ -29,11 +40,12 @@ module.exports = async function dashboard(req, res) {
   if (!configured()) return res.status(503).json({ error: 'Operator API is not configured. Add OPERATOR_PASSWORD, SUPABASE_URL, and SUPABASE_SERVICE_ROLE_KEY in Vercel.' });
   if (!authorized(req)) return rejectUnauthorized(res);
   try {
-    const [suggestionsResponse, updatesResponse, published, candidateLeads] = await Promise.all([
+    const [suggestionsResponse, updatesResponse, published, candidateLeads, autopilot] = await Promise.all([
       supabase('/rest/v1/place_suggestions?select=*&order=created_at.desc&limit=250'),
       supabase('/rest/v1/restroom_updates?select=*,restrooms(name)&order=created_at.desc&limit=250'),
       count('/rest/v1/restrooms?verification_status=eq.approved&select=id'),
       count('/rest/v1/venue_candidates?select=id'),
+      loadAutopilot(),
     ]);
     const rows = [
       ...(await formatRows(suggestionsResponse.body || [], 'place_suggestion')),
@@ -59,6 +71,7 @@ module.exports = async function dashboard(req, res) {
       operatorApproved,
       rejected,
       audit: rows,
+      autopilot,
     });
   } catch (error) {
     return res.status(500).json({ error: error instanceof Error ? error.message : 'Could not load the operator workspace.' });
