@@ -71,8 +71,19 @@ Deno.serve(async (request) => {
         body: JSON.stringify({ model: 'gpt-5.6', input: [{ role: 'user', content }] }),
       });
       const aiData = await aiResponse.json();
-      if (!aiResponse.ok || typeof aiData.output_text !== 'string') throw new Error(aiData.error?.message ?? 'OpenAI review failed');
-      const parsed = JSON.parse(aiData.output_text);
+      if (!aiResponse.ok) throw new Error(aiData.error?.message ?? 'OpenAI review failed');
+      // The REST response stores text inside output[].content[].text. Some SDKs
+      // expose output_text as a convenience field, but raw HTTP does not.
+      const outputText = typeof aiData.output_text === 'string'
+        ? aiData.output_text
+        : Array.isArray(aiData.output)
+          ? aiData.output.flatMap((item: { content?: Array<{ type?: string; text?: string }> }) => item.content ?? [])
+            .filter((item: { type?: string; text?: string }) => item.type === 'output_text' && typeof item.text === 'string')
+            .map((item: { text?: string }) => item.text ?? '')
+            .join('\n')
+          : '';
+      if (!outputText.trim()) throw new Error('OpenAI returned no review text');
+      const parsed = JSON.parse(outputText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
       await setStatus({ ai_review: parsed, ai_review_status: 'reviewed', ai_reviewed_at: new Date().toISOString(), ai_review_error: null });
     } catch (error) {
       await setStatus({ ai_review_status: 'error', ai_review_error: error instanceof Error ? error.message.slice(0, 500) : 'Review failed' });
