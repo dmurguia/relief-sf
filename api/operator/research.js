@@ -28,7 +28,7 @@ async function researchData() {
 const categoryFor = (venueType) => ({ cafe: 'Coffee', supermarket: 'Grocery', department_store: 'Grocery', restaurant: 'Restaurant', fast_food: 'Restaurant', toilets: 'Public', library: 'Public', community_centre: 'Public', marketplace: 'Public' }[venueType] || 'Public');
 const explicitRestroomEvidence = (lead) => lead.venue_type === 'toilets' || /\b(toilet|restroom|bathroom)\b/i.test(lead.evidence_note || '');
 
-async function publishLead(lead) {
+async function publishLead(lead, operatorApproved = false) {
   const restroomId = `gpt-lead-${lead.id}`;
   const publicRecord = {
     id: restroomId,
@@ -40,10 +40,12 @@ async function publishLead(lead) {
     longitude: lead.longitude,
     hours: 'Check posted hours',
     access: 'Confirm access when you arrive',
-    tags: ['gpt-reviewed', 'source-backed'],
-    description: 'GPT-reviewed public-facility lead sourced from OpenStreetMap. Confirm current access when you arrive.',
+    tags: operatorApproved ? ['operator-approved', 'research-lead'] : ['gpt-reviewed', 'source-backed'],
+    description: operatorApproved
+      ? 'Operator-approved venue lead after GPT source triage. Confirm current restroom access when you arrive.'
+      : 'GPT-reviewed public-facility lead sourced from OpenStreetMap. Confirm current access when you arrive.',
     source_url: lead.source_url,
-    source_name: 'OpenStreetMap · GPT-5.6 reviewed lead',
+    source_name: operatorApproved ? 'OpenStreetMap · operator-approved research lead' : 'OpenStreetMap · GPT-5.6 reviewed lead',
     source_tier: 'gpt_reviewed_lead',
     verification_status: 'approved',
   };
@@ -59,8 +61,22 @@ module.exports = async function research(req, res) {
     catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : 'Could not load research leads.' }); }
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed.' });
-  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'Research triage needs OPENAI_API_KEY in Vercel. Keep it server-only.' });
   const requestedIds = Array.isArray(req.body?.ids) ? req.body.ids.filter((id) => typeof id === 'string' && id.length <= 80).slice(0, 100) : [];
+  if (req.body?.action === 'publish_selected') {
+    if (!requestedIds.length) return res.status(400).json({ error: 'Select at least one triaged lead to publish.' });
+    try {
+      const selection = `id=in.(${requestedIds.map(encodeURIComponent).join(',')})`;
+      const { body: leads } = await supabase(`/rest/v1/venue_candidates?select=${select}&${selection}&status=eq.pending&ai_proposal=not.is.null&limit=100`);
+      if (!leads?.length) return res.status(200).json({ ok: true, published: 0, message: 'No selected triaged leads were eligible to graduate.' });
+      await Promise.all(leads.map(async (lead) => {
+        const publishedRestroomId = await publishLead(lead, true);
+        const aiProposal = { ...lead.ai_proposal, route: 'operator_publish', operator_action: { action: 'published_to_map', actor: 'operator', at: new Date().toISOString() }, published_restroom_id: publishedRestroomId };
+        return supabase(`/rest/v1/venue_candidates?id=eq.${encodeURIComponent(lead.id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ ai_proposal: aiProposal, published_restroom_id: publishedRestroomId, status: 'approved' }) });
+      }));
+      return res.status(200).json({ ok: true, published: leads.length, message: `Published ${leads.length} operator-approved research lead${leads.length === 1 ? '' : 's'} to the map.` });
+    } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : 'Could not graduate selected research leads.' }); }
+  }
+  if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'Research triage needs OPENAI_API_KEY in Vercel. Keep it server-only.' });
   const limit = requestedIds.length || 100;
   try {
     const selection = requestedIds.length ? `&id=in.(${requestedIds.map(encodeURIComponent).join(',')})` : '';
