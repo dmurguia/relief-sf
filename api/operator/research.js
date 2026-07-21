@@ -1,4 +1,5 @@
 const { authorized, configured, count, rejectUnauthorized, supabase } = require('./_shared');
+const { publishResearchLead, researchActionLog } = require('./_research');
 
 const select = 'id,name,address,latitude,longitude,venue_type,source_name,source_url,source_license,source_retrieved_at,evidence_note,ai_proposal,status,published_restroom_id';
 const PUBLISH_CONFIDENCE = 0.92;
@@ -7,51 +8,22 @@ const outputText = (data) => typeof data.output_text === 'string' ? data.output_
 const parseJson = (value) => JSON.parse(value.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
 
 async function latestLeads() {
-  const [triaged, fresh] = await Promise.all([
-    supabase(`/rest/v1/venue_candidates?select=${select}&ai_proposal=not.is.null&status=neq.approved&order=source_retrieved_at.asc&limit=100`),
-    supabase(`/rest/v1/venue_candidates?select=${select}&ai_proposal=is.null&status=eq.pending&order=source_retrieved_at.asc&limit=40`),
-  ]);
-  return [...(triaged.body || []), ...(fresh.body || [])];
+  const { body } = await supabase(`/rest/v1/venue_candidates?select=${select}&ai_proposal=is.null&status=eq.pending&order=source_retrieved_at.asc&limit=100`);
+  return body || [];
 }
 
 async function researchData() {
   const [leads, total, triaged, rejected] = await Promise.all([
     latestLeads(),
-    count('/rest/v1/venue_candidates?select=id&status=neq.approved'),
+    count('/rest/v1/venue_candidates?select=id&status=eq.pending&ai_proposal=is.null'),
     count('/rest/v1/venue_candidates?select=id&ai_proposal=not.is.null&status=neq.approved'),
     count('/rest/v1/venue_candidates?select=id&status=eq.rejected'),
   ]);
   const { body: publishedRows } = await supabase('/rest/v1/venue_candidates?select=id&status=eq.approved');
-  return { stats: { total, triaged, remaining: Math.max(0, total - triaged), rejected, published: publishedRows?.length || 0 }, leads };
+  return { stats: { total, triaged, remaining: total, rejected, published: publishedRows?.length || 0 }, leads };
 }
 
-const categoryFor = (venueType) => ({ cafe: 'Coffee', supermarket: 'Grocery', department_store: 'Grocery', restaurant: 'Restaurant', fast_food: 'Restaurant', toilets: 'Public', library: 'Public', community_centre: 'Public', marketplace: 'Public' }[venueType] || 'Public');
 const explicitRestroomEvidence = (lead) => lead.venue_type === 'toilets' || /\b(toilet|restroom|bathroom)\b/i.test(lead.evidence_note || '');
-
-async function publishLead(lead, operatorApproved = false) {
-  const restroomId = `gpt-lead-${lead.id}`;
-  const publicRecord = {
-    id: restroomId,
-    name: lead.name,
-    address: lead.address || 'San Francisco',
-    neighborhood: 'San Francisco',
-    category: categoryFor(lead.venue_type),
-    latitude: lead.latitude,
-    longitude: lead.longitude,
-    hours: 'Check posted hours',
-    access: 'Confirm access when you arrive',
-    tags: operatorApproved ? ['operator-approved', 'research-lead'] : ['gpt-reviewed', 'source-backed'],
-    description: operatorApproved
-      ? 'Operator-approved venue lead after GPT source triage. Confirm current restroom access when you arrive.'
-      : 'GPT-reviewed public-facility lead sourced from OpenStreetMap. Confirm current access when you arrive.',
-    source_url: lead.source_url,
-    source_name: operatorApproved ? 'OpenStreetMap · operator-approved research lead' : 'OpenStreetMap · GPT-5.6 reviewed lead',
-    source_tier: 'gpt_reviewed_lead',
-    verification_status: 'approved',
-  };
-  await supabase('/rest/v1/restrooms?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(publicRecord) });
-  return restroomId;
-}
 
 module.exports = async function research(req, res) {
   if (!configured()) return res.status(503).json({ error: 'Operator API is not configured.' });
@@ -69,8 +41,8 @@ module.exports = async function research(req, res) {
       const { body: leads } = await supabase(`/rest/v1/venue_candidates?select=${select}&${selection}&status=eq.pending&ai_proposal=not.is.null&limit=100`);
       if (!leads?.length) return res.status(200).json({ ok: true, published: 0, message: 'No selected triaged leads were eligible to graduate.' });
       await Promise.all(leads.map(async (lead) => {
-        const publishedRestroomId = await publishLead(lead, true);
-        const aiProposal = { ...lead.ai_proposal, route: 'operator_publish', operator_action: { action: 'published_to_map', actor: 'operator', at: new Date().toISOString() }, published_restroom_id: publishedRestroomId };
+        const publishedRestroomId = await publishResearchLead(lead, true);
+        const aiProposal = { ...researchActionLog(lead.ai_proposal, 'published_to_map'), route: 'operator_publish', published_restroom_id: publishedRestroomId };
         return supabase(`/rest/v1/venue_candidates?id=eq.${encodeURIComponent(lead.id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ ai_proposal: aiProposal, published_restroom_id: publishedRestroomId, status: 'approved' }) });
       }));
       return res.status(200).json({ ok: true, published: leads.length, message: `Published ${leads.length} operator-approved research lead${leads.length === 1 ? '' : 's'} to the map.` });
@@ -96,7 +68,7 @@ module.exports = async function research(req, res) {
       const requestedRoute = ['publish_to_map', 'evidence_collection', 'needs_judgment', 'reject'].includes(review.route) ? review.route : 'needs_judgment';
       const canPublish = requestedRoute === 'publish_to_map' && Number(review.confidence) >= PUBLISH_CONFIDENCE && explicitRestroomEvidence(lead);
       const route = canPublish ? 'publish_to_map' : requestedRoute === 'publish_to_map' ? 'evidence_collection' : requestedRoute;
-      const publishedRestroomId = canPublish ? await publishLead(lead) : null;
+      const publishedRestroomId = canPublish ? await publishResearchLead(lead) : null;
       const ai_proposal = { ...review, route, pipeline: 'source_triage', model: 'gpt-5.6', processed_at: processedAt, publish_threshold: PUBLISH_CONFIDENCE, published_restroom_id: publishedRestroomId };
       return supabase(`/rest/v1/venue_candidates?id=eq.${encodeURIComponent(lead.id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ ai_proposal, published_restroom_id: publishedRestroomId, status: route === 'reject' ? 'rejected' : route === 'publish_to_map' ? 'approved' : 'pending' }) });
     }));

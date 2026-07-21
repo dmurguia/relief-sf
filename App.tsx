@@ -166,6 +166,34 @@ export default function App() {
 
   const toggleDiscoveryFilter = (label: string) => setSelectedFilters((current) => current.includes(label) ? current.filter((item) => item !== label) : [...current, label]);
 
+  const showAllRestrooms = useCallback(() => {
+    setActiveCategory('All');
+    setQuery('');
+    setAppliedQuery('');
+    setSearchFocused(false);
+    setMainBusinessMatches([]);
+    setOpenOnly(false);
+    setSelectedFilters([]);
+    setSelected(null);
+    setExpandedPhoto(null);
+    setRegion(sfDefaultRegion);
+    mapRef.current?.animateToRegion(sfDefaultRegion);
+  }, []);
+
+  const chooseCategory = useCallback((category: string) => {
+    setActiveCategory(category);
+    setQuery('');
+    setAppliedQuery('');
+    setSearchFocused(false);
+    setMainBusinessMatches([]);
+    if (category === 'All') {
+      setSelected(null);
+      setExpandedPhoto(null);
+      setRegion(sfDefaultRegion);
+      mapRef.current?.animateToRegion(sfDefaultRegion);
+    }
+  }, []);
+
   const focus = useCallback((restroom: Restroom) => {
     mapRef.current?.animateToRegion({ ...restroom, latitudeDelta: 0.012, longitudeDelta: 0.012 });
     setSelected(restroom);
@@ -254,6 +282,13 @@ export default function App() {
       Alert.alert('Could not get your location', 'Try again with location services enabled, or search an address instead.');
       return;
     }
+    setQuery('');
+    setAppliedQuery('');
+    setSearchFocused(false);
+    setMainBusinessMatches([]);
+    setActiveCategory('All');
+    setOpenOnly(false);
+    setSelectedFilters([]);
     const byDistance = [...directory].sort((a, b) => metersBetween(origin, a) - metersBetween(origin, b));
     const closest = byDistance[0];
     if (!closest) {
@@ -389,7 +424,7 @@ export default function App() {
           <Pressable onPress={searchAddress} style={styles.searchButton}><Text style={styles.searchButtonText}>Go</Text></Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {categories.map((category) => <Pressable key={category} onPress={() => setActiveCategory(category)} style={[styles.chip, activeCategory === category && styles.chipActive]}><Text style={[styles.chipText, activeCategory === category && styles.chipTextActive]}>{category}</Text></Pressable>)}
+          {categories.map((category) => <Pressable key={category} onPress={() => category === 'All' ? showAllRestrooms() : chooseCategory(category)} style={[styles.chip, activeCategory === category && styles.chipActive]}><Text style={[styles.chipText, activeCategory === category && styles.chipTextActive]}>{category}</Text></Pressable>)}
         </ScrollView>
       </View>
 

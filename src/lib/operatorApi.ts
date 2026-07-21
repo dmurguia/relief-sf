@@ -2,7 +2,7 @@ export type ReviewDecision = 'eligible_for_human_publish' | 'needs_human_review'
 
 export type OperatorSubmission = {
   id: string;
-  entityType: 'place_suggestion' | 'restroom_update';
+  entityType: 'place_suggestion' | 'restroom_update' | 'research_lead';
   title: string;
   subtitle: string;
   category: string | null;
@@ -14,9 +14,11 @@ export type OperatorSubmission = {
   aiReviewStatus: 'queued' | 'reviewing' | 'reviewed' | 'error';
   aiReviewedAt: string | null;
   aiReviewError: string | null;
-  aiReview: { decision?: ReviewDecision; confidence?: number; reason?: string; description?: string; proposed_tags?: string[]; concerns?: string[]; operator_actions?: Array<{ action: string; at: string; actor?: 'autopilot'; applied_fields?: string[] }> } | null;
+  aiReview: { decision?: ReviewDecision; confidence?: number; reason?: string; description?: string; proposed_tags?: string[]; concerns?: string[]; route?: string; operator_actions?: Array<{ action: string; at: string; actor?: 'autopilot' | 'operator'; applied_fields?: string[] }> } | null;
   photoUrl: string | null;
   photoPath: string | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
 };
 
 export type OperatorDashboard = {
