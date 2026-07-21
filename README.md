@@ -127,6 +127,24 @@ SUPABASE_SERVICE_ROLE_KEY=your-supabase-secret-key
 
 `SUPABASE_SERVICE_ROLE_KEY` must never be prefixed with `EXPO_PUBLIC_`, committed, or placed in the client `.env`. Vercel functions use it only to read the private moderation tables, create expiring photo URLs, and make an explicit human-approved place public. The password gate is intentionally minimal for this hackathon demo; it is not a multi-user production authentication system.
 
+### Research-lead triage
+
+The **Research leads** tab is a separate scale pipeline for the 3,444 OpenStreetMap-derived venue leads. They are not restrooms, are not shown on the public map, and are not a manual review backlog. The operator can choose **Process next 100**. A server-side GPT-5.6 batch classifies each source lead as one of:
+
+- `evidence_collection` — worth collecting permitted official/city evidence next;
+- `needs_judgment` — potentially relevant, but insufficient source evidence; or
+- `reject` — clearly irrelevant or unusable.
+
+Every row retains source name, source URL, and license. GPT-5.6 is constrained to source triage: it cannot claim restroom availability, invent access details, or publish a lead. Only an evidence-backed contribution then reaches the normal moderator queues.
+
+The batch action requires one extra **server-only** Vercel variable:
+
+```env
+OPENAI_API_KEY=sk-your-api-key
+```
+
+Set it in Production and Preview, then redeploy. It is never sent to the browser or stored in Supabase.
+
 Review pending records from the browser, or use the local operator script when developing:
 
 ```bash

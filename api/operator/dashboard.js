@@ -40,12 +40,16 @@ module.exports = async function dashboard(req, res) {
       ...(await formatRows(updatesResponse.body || [], 'restroom_update')),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const reviewed = rows.filter((row) => row.aiReviewStatus === 'reviewed');
-    const aiReady = reviewed.filter((row) => decision(row) === 'eligible_for_human_publish');
-    const gptRejected = reviewed.filter((row) => decision(row) === 'reject');
-    const humanReview = rows.filter((row) => row.status === 'pending' && row.aiReviewStatus === 'reviewed' && decision(row) !== 'reject');
+    const gptApproved = rows.filter((row) => row.status === 'pending' && row.aiReviewStatus === 'reviewed' && decision(row) === 'eligible_for_human_publish');
+    const gptRejected = rows.filter((row) => row.status === 'pending' && row.aiReviewStatus === 'reviewed' && decision(row) === 'reject');
+    // "Needs judgment" includes model uncertainty and a temporarily pending/error
+    // model result. A rejected result is deliberately absent from this action queue.
+    const needsJudgment = rows.filter((row) => row.status === 'pending' && (row.aiReviewStatus !== 'reviewed' || decision(row) === 'needs_human_review' || !decision(row)));
     return res.status(200).json({
-      stats: { published, candidateLeads, aiReady: aiReady.length, humanReview: humanReview.length, gptRejected: gptRejected.length, reviewed: reviewed.length },
-      queue: humanReview,
+      stats: { published, candidateLeads, gptApproved: gptApproved.length, needsJudgment: needsJudgment.length, gptRejected: gptRejected.length, reviewed: reviewed.length },
+      needsJudgment,
+      gptApproved,
+      rejected: gptRejected,
       audit: rows,
     });
   } catch (error) {

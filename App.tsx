@@ -79,6 +79,9 @@ export default function App() {
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [selected, setSelected] = useState<Restroom | null>(null);
   const [query, setQuery] = useState('');
+  // Typing should only drive search suggestions. The map/list update on an
+  // intentional search action (Go/return or selecting a known Relief place).
+  const [appliedQuery, setAppliedQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [mainBusinessMatches, setMainBusinessMatches] = useState<PlaceSuggestionResult[]>([]);
   const [searchingMainBusinesses, setSearchingMainBusinesses] = useState(false);
@@ -140,12 +143,12 @@ export default function App() {
         const filter = discoveryFilters.find((candidate) => candidate.label === label);
         return !filter || matchesDiscoveryFilter(item, filter);
       }))
-      .filter((item) => !query.trim() || normalizeSearch(`${item.name} ${item.neighborhood} ${item.address}`).includes(normalizeSearch(query)))
+      .filter((item) => !appliedQuery.trim() || normalizeSearch(`${item.name} ${item.neighborhood} ${item.address}`).includes(normalizeSearch(appliedQuery)))
       .sort((a, b) => {
         const origin = userLocation ?? { latitude: region.latitude, longitude: region.longitude };
         return metersBetween(origin, a) - metersBetween(origin, b);
       });
-  }, [activeCategory, directory, openOnly, query, region.latitude, region.longitude, selectedFilters, userLocation]);
+  }, [activeCategory, directory, openOnly, appliedQuery, region.latitude, region.longitude, selectedFilters, userLocation]);
 
   const toggleDiscoveryFilter = (label: string) => setSelectedFilters((current) => current.includes(label) ? current.filter((item) => item !== label) : [...current, label]);
 
@@ -192,6 +195,25 @@ export default function App() {
     mapRef.current?.animateToRegion({ ...next, latitudeDelta: 0.018, longitudeDelta: 0.018 });
   };
 
+  const openDirections = async (destination: Restroom) => {
+    let origin = userLocation;
+    if (!origin) {
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status === 'granted') {
+          const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          origin = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+          setUserLocation(origin);
+        }
+      } catch {
+        // Apple Maps can still offer its current-location control when the app
+        // cannot obtain coordinates itself.
+      }
+    }
+    const start = origin ? `${origin.latitude},${origin.longitude}` : 'Current Location';
+    Linking.openURL(`https://maps.apple.com/?saddr=${encodeURIComponent(start)}&daddr=${destination.latitude},${destination.longitude}&dirflg=w`);
+  };
+
   const findImmediateRelief = async () => {
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status !== 'granted') {
@@ -219,6 +241,7 @@ export default function App() {
   const searchAddress = async () => {
     if (!query.trim()) return;
     Keyboard.dismiss();
+    setAppliedQuery(query);
     const knownMatch = directory.find((item) => normalizeSearch(`${item.name} ${item.neighborhood} ${item.address}`).includes(normalizeSearch(query)));
     if (knownMatch) {
       setSearchFocused(false);
@@ -317,7 +340,7 @@ export default function App() {
       setShowPlaceSuggestion(false);
       setPlaceSuggestion({ name: '', address: '', category: 'Coffee', note: '', photoUri: '', accessChoice: '', features: [], cleanlinessRating: 0 });
       setBusinessQuery(''); setPickedBusiness(null); setBusinessMatches([]);
-      setQuery(''); setSearchFocused(false); setMainBusinessMatches([]);
+      setQuery(''); setAppliedQuery(''); setSearchFocused(false); setMainBusinessMatches([]);
       setReviewConfirmation({ kind: 'place', placeName, photoStatus });
     } catch {
       Alert.alert('Suggestion not submitted', 'We could not reach the review queue. Nothing was added—please try again in a moment.');
@@ -346,7 +369,7 @@ export default function App() {
       </View>
 
       {showSearchSuggestions && <View style={styles.searchSuggestions}>
-        {localSearchMatches.map((item) => <Pressable key={item.id} onPress={() => { setSearchFocused(false); focus(item); }} style={styles.searchSuggestion}><View style={styles.searchSuggestionMark}><Text style={styles.searchSuggestionMarkText}>✓</Text></View><View><Text style={styles.searchSuggestionTitle}>{item.name}</Text><Text style={styles.searchSuggestionCopy}>{item.address} · In Relief</Text></View></Pressable>)}
+        {localSearchMatches.map((item) => <Pressable key={item.id} onPress={() => { setAppliedQuery(item.name); setSearchFocused(false); focus(item); }} style={styles.searchSuggestion}><View style={styles.searchSuggestionMark}><Text style={styles.searchSuggestionMarkText}>✓</Text></View><View><Text style={styles.searchSuggestionTitle}>{item.name}</Text><Text style={styles.searchSuggestionCopy}>{item.address} · In Relief</Text></View></Pressable>)}
         {mainBusinessMatches.map((item) => <Pressable key={item.id} onPress={() => beginPlaceSuggestion(item)} style={styles.searchSuggestion}><View style={[styles.searchSuggestionMark, styles.searchSuggestionExternal]}><Text style={styles.searchSuggestionMarkText}>＋</Text></View><View><Text style={styles.searchSuggestionTitle}>{item.name}</Text><Text style={styles.searchSuggestionCopy}>{item.subtitle} · Add restroom details</Text></View></Pressable>)}
         {searchingMainBusinesses && !mainBusinessMatches.length && !localSearchMatches.length && <View style={styles.searchHint}><Text style={styles.searchHintText}>Finding places in San Francisco…</Text></View>}
         {!searchingMainBusinesses && !mainBusinessMatches.length && !localSearchMatches.length && <Pressable onPress={() => openPlaceSuggestion(query)} style={styles.searchSuggestion}><View style={[styles.searchSuggestionMark, styles.searchSuggestionExternal]}><Text style={styles.searchSuggestionMarkText}>＋</Text></View><View><Text style={styles.searchSuggestionTitle}>Add “{query}” to Relief</Text><Text style={styles.searchSuggestionCopy}>Search a Mapbox place match and send it to review</Text></View></Pressable>}
@@ -382,7 +405,7 @@ export default function App() {
           <Text style={styles.description}>{selected.description}</Text>
           <View style={styles.tagRow}>{selected.sourceTier === 'official_city' && <View style={styles.verifiedTag}><Text style={styles.verifiedTagText}>CITY-VERIFIED DATA</Text></View>}{selected.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
           <View style={styles.photoNotice}><Text style={styles.photoIcon}>▧</Text><View><Text style={styles.photoTitle}>{selected.photoStatus === 'verified' ? 'Verified restroom photo available' : 'No verified interior photo yet'}</Text><Text style={styles.photoCopy}>{selected.photoStatus === 'verified' ? 'Photo is contributor-licensed and shows the restroom only.' : 'Help the next person: submit a restroom-only photo after your visit.'}</Text></View></View>
-          <View style={styles.detailActions}><Pressable style={styles.directions} onPress={() => Linking.openURL(`https://maps.apple.com/?daddr=${selected.latitude},${selected.longitude}`)}><Text style={styles.directionsText}>Directions</Text></Pressable><Pressable style={styles.update} onPress={() => openContribution(selected)}><Text style={styles.updateText}>Update</Text></Pressable></View>
+          <View style={styles.detailActions}><Pressable style={styles.directions} onPress={() => openDirections(selected)}><Text style={styles.directionsText}>Directions</Text></Pressable><Pressable style={styles.update} onPress={() => openContribution(selected)}><Text style={styles.updateText}>Update</Text></Pressable></View>
         </View>}
       </Modal>
 
