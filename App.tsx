@@ -131,9 +131,22 @@ export default function App() {
     await chooseBusiness(item);
   };
 
-  useEffect(() => {
-    loadApprovedRestrooms().then((items) => { setDirectory(items); setDirectorySource(items === fallbackDirectory ? 'fallback' : 'live'); }).catch(() => setDirectorySource('fallback'));
+  const refreshDirectory = useCallback(async () => {
+    try {
+      const items = await loadApprovedRestrooms();
+      setDirectory((current) => current.map((item) => item.id).join('|') === items.map((item) => item.id).join('|') ? current : items);
+      setDirectorySource(items === fallbackDirectory ? 'fallback' : 'live');
+    } catch {
+      setDirectorySource('fallback');
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshDirectory();
+    const interval = setInterval(refreshDirectory, 15_000);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') window.addEventListener('focus', refreshDirectory);
+    return () => { clearInterval(interval); if (Platform.OS === 'web' && typeof window !== 'undefined') window.removeEventListener('focus', refreshDirectory); };
+  }, [refreshDirectory]);
 
   const sortedRestrooms = useMemo(() => {
     return directory

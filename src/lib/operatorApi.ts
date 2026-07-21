@@ -20,9 +20,10 @@ export type OperatorSubmission = {
 };
 
 export type OperatorDashboard = {
-  stats: { published: number; candidateLeads: number; gptApproved: number; needsJudgment: number; gptRejected: number; reviewed: number };
+  stats: { published: number; candidateLeads: number; gptApproved: number; operatorApproved: number; needsJudgment: number; gptRejected: number; reviewed: number };
   needsJudgment: OperatorSubmission[];
   gptApproved: OperatorSubmission[];
+  operatorApproved: OperatorSubmission[];
   rejected: OperatorSubmission[];
   audit: OperatorSubmission[];
 };
