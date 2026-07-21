@@ -31,8 +31,8 @@ export type OperatorDashboard = {
 
 export type AutopilotPolicy = { enabled: boolean; confidenceThreshold: number; configured: boolean };
 
-export type ResearchLead = { id: string; name: string; address: string | null; venue_type: string; source_name: string; source_url: string | null; source_license: string | null; evidence_note: string | null; status: 'pending' | 'rejected'; ai_proposal: { route?: 'evidence_collection' | 'needs_judgment' | 'reject'; confidence?: number; reason?: string; evidence_needed?: string; processed_at?: string } | null };
-export type ResearchLeads = { stats: { total: number; triaged: number; remaining: number; rejected: number }; leads: ResearchLead[] };
+export type ResearchLead = { id: string; name: string; address: string | null; venue_type: string; source_name: string; source_url: string | null; source_license: string | null; evidence_note: string | null; status: 'pending' | 'approved' | 'rejected'; ai_proposal: { route?: 'publish_to_map' | 'operator_publish' | 'evidence_collection' | 'needs_judgment' | 'reject'; confidence?: number; reason?: string; evidence_needed?: string; processed_at?: string } | null };
+export type ResearchLeads = { stats: { total: number; triaged: number; remaining: number; rejected: number; published: number }; leads: ResearchLead[] };
 
 async function request(path: string, init?: RequestInit) {
   const response = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }, ...init });
@@ -48,5 +48,6 @@ export const autoApproveGptReady = () => request('/api/operator/review', { metho
 export const operatorLogout = () => request('/api/operator/logout', { method: 'POST' });
 export const loadResearchLeads = () => request('/api/operator/research') as Promise<ResearchLeads>;
 export const processResearchLeads = (ids?: string[]) => request('/api/operator/research', { method: 'POST', body: JSON.stringify({ ids, limit: 100 }) }) as Promise<{ ok: boolean; processed: number; routeCounts?: Record<string, number>; message: string }>;
+export const publishResearchLeads = (ids: string[]) => request('/api/operator/research', { method: 'POST', body: JSON.stringify({ action: 'publish_selected', ids }) }) as Promise<{ ok: boolean; published: number; message: string }>;
 export const saveAutopilotPolicy = (enabled: boolean, confidenceThreshold: number) => request('/api/operator/autopilot', { method: 'POST', body: JSON.stringify({ enabled, confidenceThreshold }) }) as Promise<AutopilotPolicy>;
 export const syncApprovedPhotos = () => request('/api/operator/photos', { method: 'POST' }) as Promise<{ ok: boolean; promoted: number }>;
