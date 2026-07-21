@@ -114,10 +114,10 @@ Vercel uses [`vercel.json`](./vercel.json), runs `npm run build`, and serves `di
 
 ## Build Week submission checklist
 
-- [ ] Public Vercel demo works without a consumer login
-- [ ] Operator credentials are included in the Devpost testing instructions
-- [ ] Repository is public with relevant licensing, or shared with `testing@devpost.com` and `build-week-event@openai.com`
-- [ ] README explains the division of work between me, Codex, and GPT-5.6
-- [ ] GPT-5.6 review is demonstrated on safe and rejected evidence
-- [ ] Public YouTube video has audio and is less than three minutes
-- [ ] Submission includes the primary Codex `/feedback` Session ID
+- [x] Public Vercel demo works without a consumer login
+- [x] Operator credentials are included in the Devpost testing instructions
+- [x] Repository is public with relevant licensing, or shared with `testing@devpost.com` and `build-week-event@openai.com`
+- [x] README explains the division of work between me, Codex, and GPT-5.6
+- [x] GPT-5.6 review is demonstrated on safe and rejected evidence
+- [x] Public YouTube video has audio and is less than three minutes
+- [x] Submission includes the primary Codex `/feedback` Session ID
