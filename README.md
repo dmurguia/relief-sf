@@ -136,13 +136,14 @@ SUPABASE_SERVICE_ROLE_KEY=your-supabase-secret-key
 
 ### Research-lead triage
 
-The **Research leads** tab is a separate scale pipeline for the 3,444 OpenStreetMap-derived venue leads. They are not restrooms, are not shown on the public map, and are not a manual review backlog. The operator can choose **Process next 100**. A server-side GPT-5.6 batch classifies each source lead as one of:
+The **Research leads** tab is a scale pipeline for the 3,444 OpenStreetMap-derived venue leads. The operator can choose **Process next 100**. GPT-5.6 can publish a lead only when the source itself explicitly supports a restroom/public-facility listing and the model reaches the 92% confidence threshold. Published records are visibly labeled **GPT-reviewed lead**, never city-verified. All other leads remain private research records. A server-side GPT-5.6 batch classifies each source lead as one of:
 
+- `publish_to_map` — explicit source evidence plus ≥92% GPT confidence; added to the map as a GPT-reviewed lead;
 - `evidence_collection` — worth collecting permitted official/city evidence next;
 - `needs_judgment` — potentially relevant, but insufficient source evidence; or
 - `reject` — clearly irrelevant or unusable.
 
-Every row retains source name, source URL, and license. GPT-5.6 is constrained to source triage: it cannot claim restroom availability, invent access details, or publish a lead. Only an evidence-backed contribution then reaches the normal moderator queues.
+Every row retains source name, source URL, and license. GPT-5.6 cannot invent hours or access details; map-published leads retain their OpenStreetMap provenance and remain distinct from city and community-verified records.
 
 The batch action requires one extra **server-only** Vercel variable:
 

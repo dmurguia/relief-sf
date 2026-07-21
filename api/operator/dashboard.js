@@ -44,7 +44,7 @@ module.exports = async function dashboard(req, res) {
       supabase('/rest/v1/place_suggestions?select=*&order=created_at.desc&limit=250'),
       supabase('/rest/v1/restroom_updates?select=*,restrooms(name)&order=created_at.desc&limit=250'),
       count('/rest/v1/restrooms?verification_status=eq.approved&select=id'),
-      count('/rest/v1/venue_candidates?select=id'),
+      count('/rest/v1/venue_candidates?select=id&status=neq.approved'),
       loadAutopilot(),
     ]);
     const rows = [
