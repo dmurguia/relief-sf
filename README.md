@@ -1,12 +1,14 @@
 # Relief — San Francisco restroom finder
 
-Relief helps someone find a usable restroom before it becomes an emergency. It deliberately separates **city-verified restrooms** from **unverified venue leads**, then uses GPT-5.6 to assess contributor-owned restroom photos and evidence.
+Relief helps someone find a usable restroom before it becomes an emergency. I used GPT-5.6 to seed, contribute, and scale this footprint across SF in a matter of days. The idea is this becomes useful for the community over time as more restrooms are contributed and added. As a former PM I kept my contributions focused on high-level product flow and the user-flow outcomes I wanted for the user (consumer, contributor, and operator). GPT helped me be the researcher (finding publicly available restroom data for SF), the designer (frist pass on UI), the architect (where to host, how to bring in map data), and staff engineer (what guardrails to put in place on submissions, how to categorize image classification, what should be operator reviweed vs. scaled with a GPT 5.6 pipepline), and finally the SRE (to help work through any bugs or errors). 
 
 ## What judges can try
 
-- Browser demo: deploy the `dist/` build to Vercel (instructions below)
-- iOS demo: `npm run ios`
+- Easiest would be to simply bring up SF Relief on a browswer (mobile or desktop). Purposefully did this to make it easy to consume. Intentionally left out user-auth but gated contributions to be operator/admin reviewed.
+  -https://relief-sf.vercel.app/ (consumer + contributer view)
+  -https://relief-sf.vercel.app/operator (operator view)
 - Main flow: search the map, tap **I'M FEELING LUCKY**, inspect a restroom, then submit an anonymous update or suggest an existing business through Mapbox search
+- Operator Flow: type in /operator on url, insert pw (openaihackathon), look at different review queue tabs and approve or reject. 
 
 There is no account requirement. Public submissions remain `pending` by default; an operator can explicitly enable a bounded GPT autopilot for high-confidence, safe, photo-backed submissions.
 
@@ -19,60 +21,11 @@ There is no account requirement. Public submissions remain `pending` by default;
 | Candidate venue | An open-data/official-source lead that may have a restroom | No |
 | Anonymous update | Community report, rating, or contributor-owned restroom photo | No, until reviewed |
 
-Relief does not scrape or republish Yelp/Google photos or review text. Mapbox is used only for live business discovery in the suggestion form; it is not a bulk seed source. Candidate venues must retain provenance and stay out of the public map until verified.
+Relief does not scrape or republish Yelp/Google photos or review text. Mapbox is used only for live business discovery in the suggestion form; it is not a bulk seed source. Candidate venues stay out of the public map until verified either through GPT confidence interval or human review. 
 
-## Local setup
+## Local setup (not required) since Vercel app is better. 
 
-```bash
-npm install
-cp .env.example .env
-npm run ios
-# or
-npm run web
-```
 
-Set these public client variables in `.env`:
-
-```env
-EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY
-EXPO_PUBLIC_MAPBOX_TOKEN=pk.YOUR_PUBLIC_MAPBOX_TOKEN
-```
-
-The Mapbox token is a public client token. Restrict it to `localhost` during development and the deployed Vercel URL afterward. Never add a Supabase service-role key or OpenAI API key to an `EXPO_PUBLIC_` variable.
-
-## Supabase: one-time setup
-
-In the Supabase SQL Editor, run these files in order:
-
-1. [`supabase/schema.sql`](./supabase/schema.sql)
-2. [`supabase/add-place-suggestions.sql`](./supabase/add-place-suggestions.sql)
-3. [`supabase/add-cleanliness-ratings.sql`](./supabase/add-cleanliness-ratings.sql)
-4. [`supabase/add-place-suggestion-photos.sql`](./supabase/add-place-suggestion-photos.sql)
-5. [`supabase/add-trust-pipeline.sql`](./supabase/add-trust-pipeline.sql)
-6. [`supabase/add-automated-review.sql`](./supabase/add-automated-review.sql)
-7. [`supabase/fix-anonymous-submission-rls.sql`](./supabase/fix-anonymous-submission-rls.sql)
-8. [`supabase/add-autopilot-policy.sql`](./supabase/add-autopilot-policy.sql)
-9. [`supabase/add-public-restroom-photos.sql`](./supabase/add-public-restroom-photos.sql)
-10. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
-
-The final generated file contains 214 current DataSF city restroom records. Regenerate it before a release with:
-
-```bash
-node scripts/build-city-restroom-seed.mjs
-```
-
-The app reads `approved` Supabase restrooms at launch and uses the small local set only if the database is unavailable or empty.
-
-## Candidate-venue research queue
-
-Run the candidate generator after the City seed is live:
-
-```bash
-node scripts/build-osm-candidate-seed.mjs
-```
-
-It creates small `supabase/generated/osm-venue-candidates-*.sql` batches: a private `venue_candidates` queue of open-data venues, not restroom claims. Execute every batch in Supabase only after `add-trust-pipeline.sql`. Retain the visible attribution `© OpenStreetMap contributors` with a link to [its copyright page](https://www.openstreetmap.org/copyright). [`scripts/build-osm-candidate-query.md`](./scripts/build-osm-candidate-query.md) documents the guardrails.
 
 ### Where the 3,444 candidates came from
 
@@ -92,34 +45,12 @@ Research leads can never use autopilot. Every autopublished or auto-applied chan
 
 ### Coverage expansion jobs
 
-Run [`supabase/add-exploration-jobs.sql`](./supabase/add-exploration-jobs.sql) once. Coverage jobs are private and never publish a place automatically. Create a protected job locally only after setting a service-role key:
-
-```bash
-node scripts/queue-exploration-job.mjs neighborhood "SoMa"
-node scripts/queue-exploration-job.mjs city "San Francisco"
-```
 
 Job runners may use only city/open datasets and official business sources, must retain evidence and licensing information, and must write discoveries as private `venue_candidates`. A human approves any public restroom record.
 
-This abstraction can queue a new city such as New York for private candidate review, but the public Relief map remains SF-only until that city has an approved, human-reviewed inventory. Do not describe a queued city as verified coverage.
+This abstraction can queue a new city such as New York for private candidate review, but the public Relief map remains SF-only until that city has an approved, human-reviewed inventory. 
 
-Deploy it after installing and logging in to the Supabase CLI:
 
-```bash
-supabase secrets set OPENAI_API_KEY=... RELIEF_REVIEW_TOKEN=...
-supabase functions deploy enrich-restroom-photo
-supabase functions deploy review-submission
-supabase functions deploy submit-contribution
-```
-
-`enrich-restroom-photo` deliberately disables Supabase's default JWT check because it is invoked from the private operator script, then enforces its own `RELIEF_REVIEW_TOKEN`. Never expose that token to the app or Vercel.
-
-Keep the following values only in your local operator environment—not in Vercel or the app:
-
-```env
-SUPABASE_SERVICE_ROLE_KEY=...
-RELIEF_REVIEW_TOKEN=...
-```
 
 ## Operator workspace
 
@@ -135,7 +66,6 @@ SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-supabase-secret-key
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` must never be prefixed with `EXPO_PUBLIC_`, committed, or placed in the client `.env`. Vercel functions use it only to read the private moderation tables, create expiring photo URLs, and make an explicit human-approved place public. The password gate is intentionally minimal for this hackathon demo; it is not a multi-user production authentication system.
 
 ### Research-lead triage
 
@@ -164,15 +94,6 @@ node scripts/moderate.mjs review-photo UPDATE_ID
 node scripts/moderate.mjs approve-update UPDATE_ID
 ```
 
-## Vercel judge URL
-
-The repository includes [`vercel.json`](./vercel.json). In Vercel, import the GitHub repository as framework **Other**, then set these variables for both Preview and Production:
-
-- `EXPO_PUBLIC_SUPABASE_URL`
-- `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `EXPO_PUBLIC_MAPBOX_TOKEN`
-
-Vercel runs `npm run build` and serves `dist/`. After the first deployment, add the Vercel URL to the Mapbox token's allowed URLs and redeploy.
 
 ## Build Week submission checklist
 
@@ -180,6 +101,6 @@ Vercel runs `npm run build` and serves `dist/`. After the first deployment, add 
 - [ ] Repository is public, or shared with `testing@devpost.com` and `build-week-event@openai.com`
 - [ ] README includes setup, sample data, and this trust model
 - [ ] GPT-5.6 photo review has been deployed and demonstrated on one safe contributor photo
-- [ ] <3-minute public YouTube video shows: immediate-restroom flow, Mapbox business suggestion, city-verified data, pending moderation, and GPT-5.6 review
-- [ ] Video voiceover explains the concrete Codex workflow and GPT-5.6 review role
-- [ ] Submission includes the primary Codex `/feedback` Session ID
+- [ ] ~3-minute public YouTube video shows: immediate-restroom flow, Mapbox business suggestion, city-verified data, pending moderation, and GPT-5.6 review
+- [x ] Video voiceover explains the concrete Codex workflow and GPT-5.6 review role
+- [x] Submission includes the primary Codex `/feedback` Session ID - 
