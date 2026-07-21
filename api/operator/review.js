@@ -1,4 +1,5 @@
 const { authorized, configured, rejectUnauthorized, supabase } = require('./_shared');
+const { promoteApprovedPhoto } = require('./_photos');
 
 const validEntityTypes = new Set(['place_suggestion', 'restroom_update']);
 const validActions = new Set(['approve', 'reject', 'auto_approve_all', 'edit_and_requeue']);
@@ -12,6 +13,7 @@ const actionLog = (review, action, metadata = {}) => ({
 });
 
 async function publishPlaceSuggestion(row, action = 'approved') {
+  const publicPhotoPath = await promoteApprovedPhoto(row.photo_path, `community-${row.id}`);
   const publicRecord = {
     id: `community-${row.id}`,
     name: row.name,
@@ -26,6 +28,7 @@ async function publishPlaceSuggestion(row, action = 'approved') {
     description: row.ai_review?.description || row.note || 'Community-submitted restroom information. Confirm details when you arrive.',
     source_name: 'Community submission',
     source_tier: 'community_verified',
+    public_photo_path: publicPhotoPath,
     verification_status: 'approved',
   };
   await supabase('/rest/v1/restrooms?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(publicRecord) });
@@ -33,7 +36,7 @@ async function publishPlaceSuggestion(row, action = 'approved') {
 }
 
 async function approveUpdate(row, action = 'approved') {
-  const { body: restrooms } = await supabase(`/rest/v1/restrooms?id=eq.${encodeURIComponent(row.restroom_id)}&select=id,access,tags`);
+  const { body: restrooms } = await supabase(`/rest/v1/restrooms?id=eq.${encodeURIComponent(row.restroom_id)}&select=id,access,tags,public_photo_path`);
   const restroom = restrooms?.[0];
   if (!restroom) throw new Error('The source restroom record no longer exists.');
   const nextTags = Array.from(new Set([...(Array.isArray(restroom.tags) ? restroom.tags : []), ...tagList(row.ai_review)]));
@@ -41,6 +44,7 @@ async function approveUpdate(row, action = 'approved') {
   const appliedFields = [];
   if (row.access_detail) { patch.access = row.access_detail; appliedFields.push('access'); }
   if (nextTags.length !== (restroom.tags || []).length) { patch.tags = nextTags; appliedFields.push('tags'); }
+  if (row.photo_path) { patch.public_photo_path = await promoteApprovedPhoto(row.photo_path, restroom.id); appliedFields.push('photo'); }
   if (appliedFields.length) await supabase(`/rest/v1/restrooms?id=eq.${encodeURIComponent(row.restroom_id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
   await supabase(`/rest/v1/restroom_updates?id=eq.${encodeURIComponent(row.id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'approved', ai_review: actionLog(row.ai_review, action, { applied_fields: appliedFields }) }) });
   return appliedFields;

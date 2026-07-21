@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { autoApproveGptReady, loadOperatorDashboard, loadResearchLeads, operatorLogin, operatorLogout, processResearchLeads, saveAutopilotPolicy, submitOperatorReview, type AutopilotPolicy, type OperatorDashboard, type OperatorSubmission, type ResearchLead, type ResearchLeads, type ReviewDecision } from '../lib/operatorApi';
+import { autoApproveGptReady, loadOperatorDashboard, loadResearchLeads, operatorLogin, operatorLogout, processResearchLeads, saveAutopilotPolicy, submitOperatorReview, syncApprovedPhotos, type AutopilotPolicy, type OperatorDashboard, type OperatorSubmission, type ResearchLead, type ResearchLeads, type ReviewDecision } from '../lib/operatorApi';
 
 type QueueTab = 'judgment' | 'approved' | 'operatorApproved' | 'rejected' | 'research';
 type EntityFilter = 'all' | 'place_suggestion' | 'restroom_update';
@@ -28,7 +28,7 @@ export default function OperatorConsole() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const refresh = async () => { setLoading(true); setError(''); try { const [nextDashboard, nextResearch] = await Promise.all([loadOperatorDashboard(), loadResearchLeads()]); setDashboard(nextDashboard); setResearch(nextResearch); } catch (cause) { setDashboard(null); setResearch(null); setError(cause instanceof Error ? cause.message : 'Could not load operator data.'); } finally { setLoading(false); } };
+  const refresh = async () => { setLoading(true); setError(''); try { const [nextDashboard, nextResearch] = await Promise.all([loadOperatorDashboard(), loadResearchLeads()]); setDashboard(nextDashboard); setResearch(nextResearch); const photoSync = await syncApprovedPhotos().catch(() => ({ ok: false, promoted: 0 })); if (photoSync.promoted > 0) setNotice(`${photoSync.promoted} approved restroom photo${photoSync.promoted === 1 ? '' : 's'} published to the map.`); } catch (cause) { setDashboard(null); setResearch(null); setError(cause instanceof Error ? cause.message : 'Could not load operator data.'); } finally { setLoading(false); } };
   useEffect(() => { refresh(); }, []);
   const login = async () => { if (!password.trim()) return setError('Enter the shared demo password.'); setAuthenticating(true); setError(''); try { await operatorLogin(password); await refresh(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not unlock the operator workspace.'); } finally { setAuthenticating(false); } };
   const saveReview = async (action: 'approve' | 'reject' | 'edit_and_requeue', note?: string) => { if (!selected) return; setActioning(true); setNotice(''); setError(''); try { const result = await submitOperatorReview(selected.entityType, selected.id, action, note); setNotice(result.message); setSelected(null); await refresh(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save the review.'); } finally { setActioning(false); } };

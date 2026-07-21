@@ -18,6 +18,7 @@ create table if not exists restrooms (
   description text not null,
   source_url text,
   source_name text,
+  public_photo_path text,
   verification_status review_status not null default 'pending',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -57,6 +58,10 @@ on conflict (id) do nothing;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('restroom-submissions', 'restroom-submissions', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('restroom-photos', 'restroom-photos', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do nothing;
 
 create policy "anonymous pending photos can be uploaded" on storage.objects
