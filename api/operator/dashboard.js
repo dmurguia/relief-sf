@@ -42,14 +42,18 @@ module.exports = async function dashboard(req, res) {
     const reviewed = rows.filter((row) => row.aiReviewStatus === 'reviewed');
     const gptApproved = rows.filter((row) => row.status === 'pending' && row.aiReviewStatus === 'reviewed' && decision(row) === 'eligible_for_human_publish');
     const gptRejected = rows.filter((row) => row.status === 'pending' && row.aiReviewStatus === 'reviewed' && decision(row) === 'reject');
+    // Keep operator decisions alongside model rejections. Both remain private,
+    // auditable records and can be amended/re-run from the rejected queue.
+    const operatorRejected = rows.filter((row) => row.status === 'rejected');
+    const rejected = [...gptRejected, ...operatorRejected.filter((row) => !gptRejected.some((item) => item.id === row.id && item.entityType === row.entityType))];
     // "Needs judgment" includes model uncertainty and a temporarily pending/error
     // model result. A rejected result is deliberately absent from this action queue.
     const needsJudgment = rows.filter((row) => row.status === 'pending' && (row.aiReviewStatus !== 'reviewed' || decision(row) === 'needs_human_review' || !decision(row)));
     return res.status(200).json({
-      stats: { published, candidateLeads, gptApproved: gptApproved.length, needsJudgment: needsJudgment.length, gptRejected: gptRejected.length, reviewed: reviewed.length },
+      stats: { published, candidateLeads, gptApproved: gptApproved.length, needsJudgment: needsJudgment.length, gptRejected: rejected.length, reviewed: reviewed.length },
       needsJudgment,
       gptApproved,
-      rejected: gptRejected,
+      rejected,
       audit: rows,
     });
   } catch (error) {

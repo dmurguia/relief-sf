@@ -32,9 +32,11 @@ module.exports = async function research(req, res) {
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed.' });
   if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'Research triage needs OPENAI_API_KEY in Vercel. Keep it server-only.' });
-  const limit = 100;
+  const requestedIds = Array.isArray(req.body?.ids) ? req.body.ids.filter((id) => typeof id === 'string' && id.length <= 80).slice(0, 100) : [];
+  const limit = requestedIds.length || 100;
   try {
-    const { body: leads } = await supabase(`/rest/v1/venue_candidates?select=${select}&ai_proposal=is.null&status=eq.pending&order=source_retrieved_at.asc&limit=${limit}`);
+    const selection = requestedIds.length ? `&id=in.(${requestedIds.map(encodeURIComponent).join(',')})` : '';
+    const { body: leads } = await supabase(`/rest/v1/venue_candidates?select=${select}&ai_proposal=is.null&status=eq.pending${selection}&order=source_retrieved_at.asc&limit=${limit}`);
     if (!leads?.length) return res.status(200).json({ ok: true, processed: 0, message: 'No untriaged source leads remain.' });
     const input = leads.map((lead) => ({ id: lead.id, name: lead.name, address: lead.address, venue_type: lead.venue_type, source_name: lead.source_name, source_url: lead.source_url, source_license: lead.source_license, evidence_note: lead.evidence_note }));
     const prompt = `You route Relief research leads. These are open-data venue leads, NOT verified restrooms. For each input lead, decide one route: "evidence_collection" only if the source itself plausibly points to a public restroom/facility worth verifying; "needs_judgment" for a potentially relevant venue without adequate restroom evidence; or "reject" for clearly irrelevant, duplicate-looking, or unusable leads. Never claim the venue has a restroom, never invent hours/access, and never use an eligible/publish decision. Return ONLY JSON: {"reviews":[{"id":"exact input id","route":"evidence_collection|needs_judgment|reject","confidence":0.0,"reason":"max 120 chars","evidence_needed":"max 120 chars"}]}. Return exactly one review for every input id. Inputs: ${JSON.stringify(input)}`;
