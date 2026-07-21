@@ -166,9 +166,48 @@ export default function App() {
 
   const toggleDiscoveryFilter = (label: string) => setSelectedFilters((current) => current.includes(label) ? current.filter((item) => item !== label) : [...current, label]);
 
+  const showAllRestrooms = useCallback(() => {
+    setActiveCategory('All');
+    setQuery('');
+    setAppliedQuery('');
+    setSearchFocused(false);
+    setMainBusinessMatches([]);
+    setOpenOnly(false);
+    setSelectedFilters([]);
+    setSelected(null);
+    setExpandedPhoto(null);
+    setRegion(sfDefaultRegion);
+    mapRef.current?.animateToRegion(sfDefaultRegion);
+  }, []);
+
+  const chooseCategory = useCallback((category: string) => {
+    setActiveCategory(category);
+    setQuery('');
+    setAppliedQuery('');
+    setSearchFocused(false);
+    setMainBusinessMatches([]);
+    if (category === 'All') {
+      setSelected(null);
+      setExpandedPhoto(null);
+      setRegion(sfDefaultRegion);
+      mapRef.current?.animateToRegion(sfDefaultRegion);
+    }
+  }, []);
+
   const focus = useCallback((restroom: Restroom) => {
     mapRef.current?.animateToRegion({ ...restroom, latitudeDelta: 0.012, longitudeDelta: 0.012 });
     setSelected(restroom);
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    setSelected(null);
+    setExpandedPhoto(null);
+    setQuery('');
+    setAppliedQuery('');
+    setSearchFocused(false);
+    setMainBusinessMatches([]);
+    setRegion(sfDefaultRegion);
+    mapRef.current?.animateToRegion(sfDefaultRegion);
   }, []);
 
   useEffect(() => {
@@ -243,6 +282,13 @@ export default function App() {
       Alert.alert('Could not get your location', 'Try again with location services enabled, or search an address instead.');
       return;
     }
+    setQuery('');
+    setAppliedQuery('');
+    setSearchFocused(false);
+    setMainBusinessMatches([]);
+    setActiveCategory('All');
+    setOpenOnly(false);
+    setSelectedFilters([]);
     const byDistance = [...directory].sort((a, b) => metersBetween(origin, a) - metersBetween(origin, b));
     const closest = byDistance[0];
     if (!closest) {
@@ -378,7 +424,7 @@ export default function App() {
           <Pressable onPress={searchAddress} style={styles.searchButton}><Text style={styles.searchButtonText}>Go</Text></Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {categories.map((category) => <Pressable key={category} onPress={() => setActiveCategory(category)} style={[styles.chip, activeCategory === category && styles.chipActive]}><Text style={[styles.chipText, activeCategory === category && styles.chipTextActive]}>{category}</Text></Pressable>)}
+          {categories.map((category) => <Pressable key={category} onPress={() => category === 'All' ? showAllRestrooms() : chooseCategory(category)} style={[styles.chip, activeCategory === category && styles.chipActive]}><Text style={[styles.chipText, activeCategory === category && styles.chipTextActive]}>{category}</Text></Pressable>)}
         </ScrollView>
       </View>
 
@@ -410,11 +456,11 @@ export default function App() {
         </View>
       </Modal>
 
-      <Modal visible={Boolean(selected)} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setSelected(null)} />
+      <Modal visible={Boolean(selected)} animationType="slide" transparent onRequestClose={closeDetail}>
+        <Pressable style={styles.modalBackdrop} onPress={closeDetail} />
         {selected && <View style={styles.detailSheet}>
           <View style={styles.sheetHandle} />
-          <View style={styles.detailTop}><View><Text style={[styles.categoryPill, { color: selected.color }]}>{selected.category.toUpperCase()}</Text><Text style={styles.detailName}>{selected.name}</Text><Text style={styles.detailAddress}>{selected.address} · {selected.neighborhood}</Text></View><Pressable onPress={() => setSelected(null)}><Text style={styles.close}>×</Text></Pressable></View>
+          <View style={styles.detailTop}><View><Text style={[styles.categoryPill, { color: selected.color }]}>{selected.category.toUpperCase()}</Text><Text style={styles.detailName}>{selected.name}</Text><Text style={styles.detailAddress}>{selected.address} · {selected.neighborhood}</Text></View><Pressable accessibilityLabel="Close restroom details and show all results" onPress={closeDetail}><Text style={styles.close}>×</Text></Pressable></View>
           <View style={styles.statusRow}><Text style={[styles.status, selected.hoursStatus === 'confirm' ? styles.confirm : isOpenNow(selected) ? styles.open : styles.closed]}>{availabilityLabel(selected)}</Text><Text style={styles.hours}>{selected.hours}</Text></View>
           <Text style={styles.description}>{selected.description}</Text>
           <View style={styles.tagRow}>{selected.sourceTier === 'official_city' && <View style={styles.verifiedTag}><Text style={styles.verifiedTagText}>CITY-VERIFIED DATA</Text></View>}{selected.sourceTier === 'gpt_reviewed_lead' && <View style={styles.gptLeadTag}><Text style={styles.gptLeadTagText}>GPT-REVIEWED LEAD</Text></View>}{selected.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>

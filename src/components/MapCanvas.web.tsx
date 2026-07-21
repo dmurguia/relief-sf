@@ -22,7 +22,10 @@ const loadMapbox = () => new Promise<any>((resolve, reject) => {
 const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({ restrooms, onSelect }, ref) => {
   const containerRef = useRef<any>(null);
   const mapRef = useRef<any>(null);
-  useImperativeHandle(ref, () => ({ animateToRegion: (region) => mapRef.current?.easeTo({ center: [region.longitude, region.latitude], zoom: 15, duration: 380 }) }), []);
+  useImperativeHandle(ref, () => ({ animateToRegion: (region) => {
+    const zoom = region.longitudeDelta >= 0.08 ? 11.4 : region.longitudeDelta >= 0.03 ? 13 : 15;
+    mapRef.current?.easeTo({ center: [region.longitude, region.latitude], zoom, duration: 380 });
+  } }), []);
 
   useEffect(() => {
     let disposed = false;

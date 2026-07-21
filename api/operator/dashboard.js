@@ -35,21 +35,64 @@ async function formatRows(rows, entityType) {
   })));
 }
 
+function formatResearchRows(rows) {
+  return rows.map((row) => {
+    const route = row.ai_proposal?.route;
+    const modelDecision = route === 'reject'
+      ? 'reject'
+      : route === 'needs_judgment' || route === 'evidence_collection'
+        ? 'needs_human_review'
+        : 'eligible_for_human_publish';
+    const operatorAction = row.ai_proposal?.operator_action;
+    return {
+      id: row.id,
+      entityType: 'research_lead',
+      title: row.name,
+      subtitle: row.address || row.venue_type || 'Open-data venue lead',
+      category: row.venue_type || null,
+      note: row.evidence_note || '',
+      accessDetail: null,
+      cleanlinessRating: null,
+      status: row.status,
+      createdAt: row.source_retrieved_at || row.ai_proposal?.processed_at || new Date().toISOString(),
+      aiReviewStatus: 'reviewed',
+      aiReviewedAt: row.ai_proposal?.processed_at || null,
+      aiReviewError: null,
+      aiReview: {
+        decision: modelDecision,
+        confidence: row.ai_proposal?.confidence,
+        reason: row.ai_proposal?.reason,
+        description: row.ai_proposal?.evidence_needed,
+        proposed_tags: ['research_lead', row.venue_type].filter(Boolean),
+        concerns: row.ai_proposal?.evidence_needed ? [row.ai_proposal.evidence_needed] : [],
+        operator_actions: operatorAction ? [operatorAction] : route === 'publish_to_map' ? [{ action: 'published_to_map', actor: 'autopilot', at: row.ai_proposal?.processed_at }] : [],
+        route,
+      },
+      photoUrl: null,
+      photoPath: null,
+      sourceName: row.source_name,
+      sourceUrl: row.source_url,
+    };
+  });
+}
+
 module.exports = async function dashboard(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed.' });
   if (!configured()) return res.status(503).json({ error: 'Operator API is not configured. Add OPERATOR_PASSWORD, SUPABASE_URL, and SUPABASE_SERVICE_ROLE_KEY in Vercel.' });
   if (!authorized(req)) return rejectUnauthorized(res);
   try {
-    const [suggestionsResponse, updatesResponse, published, candidateLeads, autopilot] = await Promise.all([
+    const [suggestionsResponse, updatesResponse, researchResponse, published, candidateLeads, autopilot] = await Promise.all([
       supabase('/rest/v1/place_suggestions?select=*&order=created_at.desc&limit=250'),
       supabase('/rest/v1/restroom_updates?select=*,restrooms(name)&order=created_at.desc&limit=250'),
+      supabase('/rest/v1/venue_candidates?select=id,name,address,venue_type,source_name,source_url,source_retrieved_at,evidence_note,ai_proposal,status,published_restroom_id&ai_proposal=not.is.null&order=source_retrieved_at.desc&limit=250'),
       count('/rest/v1/restrooms?verification_status=eq.approved&select=id'),
-      count('/rest/v1/venue_candidates?select=id&status=neq.approved'),
+      count('/rest/v1/venue_candidates?select=id&status=eq.pending&ai_proposal=is.null'),
       loadAutopilot(),
     ]);
     const rows = [
       ...(await formatRows(suggestionsResponse.body || [], 'place_suggestion')),
       ...(await formatRows(updatesResponse.body || [], 'restroom_update')),
+      ...formatResearchRows(researchResponse.body || []),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const reviewed = rows.filter((row) => row.aiReviewStatus === 'reviewed');
     const gptApproved = rows.filter((row) => row.status === 'pending' && row.aiReviewStatus === 'reviewed' && decision(row) === 'eligible_for_human_publish');

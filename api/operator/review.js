@@ -1,7 +1,8 @@
 const { authorized, configured, rejectUnauthorized, supabase } = require('./_shared');
 const { promoteApprovedPhoto } = require('./_photos');
+const { publishResearchLead, researchActionLog } = require('./_research');
 
-const validEntityTypes = new Set(['place_suggestion', 'restroom_update']);
+const validEntityTypes = new Set(['place_suggestion', 'restroom_update', 'research_lead']);
 const validActions = new Set(['approve', 'reject', 'auto_approve_all', 'edit_and_requeue']);
 const tagList = (review) => Array.from(new Set([
   ...(Array.isArray(review?.proposed_tags) ? review.proposed_tags : []),
@@ -81,6 +82,25 @@ module.exports = async function review(req, res) {
       return res.status(200).json({ ok: true, message: `Auto-approved ${approvedSuggestions.length + approvedUpdates.length} GPT-approved record${approvedSuggestions.length + approvedUpdates.length === 1 ? '' : 's'}.` });
     }
     if (!validEntityTypes.has(entityType) || typeof id !== 'string') return res.status(400).json({ error: 'Invalid review request.' });
+    if (entityType === 'research_lead') {
+      const { body: rows } = await supabase(`/rest/v1/venue_candidates?id=eq.${encodeURIComponent(id)}&select=*`);
+      const row = rows?.[0];
+      if (!row) return res.status(404).json({ error: 'Research lead not found.' });
+      if (action === 'edit_and_requeue') {
+        const evidenceNote = typeof req.body?.note === 'string' && req.body.note.trim() ? req.body.note.trim().slice(0, 1000) : row.evidence_note;
+        await supabase(`/rest/v1/venue_candidates?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ evidence_note: evidenceNote, status: 'pending', ai_proposal: null, published_restroom_id: null }) });
+        return res.status(200).json({ ok: true, message: 'Research lead returned to source triage for a new GPT route.' });
+      }
+      if (action === 'approve') {
+        const publishedRestroomId = await publishResearchLead(row, true);
+        const proposal = { ...researchActionLog(row.ai_proposal, 'published_to_map'), route: 'operator_publish', published_restroom_id: publishedRestroomId };
+        await supabase(`/rest/v1/venue_candidates?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'approved', ai_proposal: proposal, published_restroom_id: publishedRestroomId }) });
+        return res.status(200).json({ ok: true, message: 'Research lead published to the map and moved to Operator approved.' });
+      }
+      const proposal = researchActionLog(row.ai_proposal, 'rejected');
+      await supabase(`/rest/v1/venue_candidates?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'rejected', ai_proposal: proposal }) });
+      return res.status(200).json({ ok: true, message: 'Research lead rejected and retained in the audit trail.' });
+    }
     const table = entityType === 'place_suggestion' ? 'place_suggestions' : 'restroom_updates';
     const { body: rows } = await supabase(`/rest/v1/${table}?id=eq.${encodeURIComponent(id)}&select=*`);
     const row = rows?.[0];
