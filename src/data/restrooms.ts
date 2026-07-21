@@ -1,7 +1,7 @@
 import { Region } from 'react-native-maps';
 
 export type RestroomCategory = 'Public' | 'Park' | 'Restaurant' | 'Grocery' | 'Coffee';
-export type Restroom = { id: string; name: string; address: string; neighborhood: string; category: RestroomCategory; latitude: number; longitude: number; hours: string; opensAt: number; closesAt: number; access: string; tags: string[]; description: string; color: string; photoStatus: 'verified' | 'needed'; sourceTier?: 'official_city' | 'official_business' | 'community_verified'; hoursStatus?: 'known' | 'confirm' };
+export type Restroom = { id: string; name: string; address: string; neighborhood: string; category: RestroomCategory; latitude: number; longitude: number; hours: string; opensAt: number; closesAt: number; access: string; tags: string[]; description: string; color: string; photoStatus: 'verified' | 'needed'; sourceTier?: 'official_city' | 'official_business' | 'community_verified' | 'gpt_reviewed_lead'; hoursStatus?: 'known' | 'confirm' };
 
 export const sfDefaultRegion: Region = { latitude: 37.7685, longitude: -122.4475, latitudeDelta: 0.115, longitudeDelta: 0.105 };
 export const categories = ['All', 'Public', 'Park', 'Restaurant', 'Grocery', 'Coffee'] as const;

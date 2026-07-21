@@ -1,6 +1,6 @@
 -- Run after schema.sql. This separates map-published records from research candidates.
 alter table restrooms add column if not exists source_tier text not null default 'community_verified'
-  check (source_tier in ('official_city', 'official_business', 'community_verified'));
+  check (source_tier in ('official_city', 'official_business', 'community_verified', 'gpt_reviewed_lead'));
 alter table restrooms add column if not exists source_updated_at timestamptz;
 
 create table if not exists venue_candidates (
