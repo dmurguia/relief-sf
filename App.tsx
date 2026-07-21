@@ -171,6 +171,17 @@ export default function App() {
     setSelected(restroom);
   }, []);
 
+  const closeDetail = useCallback(() => {
+    setSelected(null);
+    setExpandedPhoto(null);
+    setQuery('');
+    setAppliedQuery('');
+    setSearchFocused(false);
+    setMainBusinessMatches([]);
+    setRegion(sfDefaultRegion);
+    mapRef.current?.animateToRegion(sfDefaultRegion);
+  }, []);
+
   useEffect(() => {
     if (!showPlaceSuggestion || businessQuery.trim().length < 2 || pickedBusiness) { setBusinessMatches([]); return; }
     const timeout = setTimeout(async () => {
@@ -410,11 +421,11 @@ export default function App() {
         </View>
       </Modal>
 
-      <Modal visible={Boolean(selected)} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setSelected(null)} />
+      <Modal visible={Boolean(selected)} animationType="slide" transparent onRequestClose={closeDetail}>
+        <Pressable style={styles.modalBackdrop} onPress={closeDetail} />
         {selected && <View style={styles.detailSheet}>
           <View style={styles.sheetHandle} />
-          <View style={styles.detailTop}><View><Text style={[styles.categoryPill, { color: selected.color }]}>{selected.category.toUpperCase()}</Text><Text style={styles.detailName}>{selected.name}</Text><Text style={styles.detailAddress}>{selected.address} · {selected.neighborhood}</Text></View><Pressable onPress={() => setSelected(null)}><Text style={styles.close}>×</Text></Pressable></View>
+          <View style={styles.detailTop}><View><Text style={[styles.categoryPill, { color: selected.color }]}>{selected.category.toUpperCase()}</Text><Text style={styles.detailName}>{selected.name}</Text><Text style={styles.detailAddress}>{selected.address} · {selected.neighborhood}</Text></View><Pressable accessibilityLabel="Close restroom details and show all results" onPress={closeDetail}><Text style={styles.close}>×</Text></Pressable></View>
           <View style={styles.statusRow}><Text style={[styles.status, selected.hoursStatus === 'confirm' ? styles.confirm : isOpenNow(selected) ? styles.open : styles.closed]}>{availabilityLabel(selected)}</Text><Text style={styles.hours}>{selected.hours}</Text></View>
           <Text style={styles.description}>{selected.description}</Text>
           <View style={styles.tagRow}>{selected.sourceTier === 'official_city' && <View style={styles.verifiedTag}><Text style={styles.verifiedTagText}>CITY-VERIFIED DATA</Text></View>}{selected.sourceTier === 'gpt_reviewed_lead' && <View style={styles.gptLeadTag}><Text style={styles.gptLeadTagText}>GPT-REVIEWED LEAD</Text></View>}{selected.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View>
