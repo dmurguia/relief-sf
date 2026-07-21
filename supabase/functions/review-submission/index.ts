@@ -55,6 +55,25 @@ Deno.serve(async (request) => {
 
   const table = entityType === 'place_suggestion' ? 'place_suggestions' : 'restroom_updates';
   const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+  const promoteApprovedPhoto = async (photoPath: string | null, restroomId: string) => {
+    if (!photoPath) return null;
+    const signedResponse = await fetch(`${supabaseUrl}/storage/v1/object/sign/restroom-submissions/${photoPath}`, {
+      method: 'POST', headers, body: JSON.stringify({ expiresIn: 120 }),
+    });
+    const signed = await signedResponse.json().catch(() => null);
+    if (!signedResponse.ok || !signed?.signedURL) throw new Error('Autopilot could not read the approved photo.');
+    const source = await fetch(`${supabaseUrl}/storage/v1${signed.signedURL}`);
+    if (!source.ok) throw new Error('Autopilot could not download the approved photo.');
+    const contentType = source.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) throw new Error('Autopilot received an unsupported photo type.');
+    const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+    const publicPath = `verified/${restroomId}.${extension}`;
+    const uploaded = await fetch(`${supabaseUrl}/storage/v1/object/restroom-photos/${publicPath}`, {
+      method: 'POST', headers: { ...headers, 'Content-Type': contentType, 'x-upsert': 'true' }, body: await source.arrayBuffer(),
+    });
+    if (!uploaded.ok) throw new Error('Autopilot could not publish the approved photo.');
+    return publicPath;
+  };
   const rowResponse = await fetch(`${supabaseUrl}/rest/v1/${table}?id=eq.${encodeURIComponent(submissionId)}&select=*`, { headers });
   const [submission] = await rowResponse.json().catch(() => []) as Submission[];
   if (!submission) return json({ error: 'Submission not found' }, 404);
@@ -77,8 +96,10 @@ Deno.serve(async (request) => {
   const publishAutopilot = async (review: AiReview, policy: AutopilotPolicy) => {
     const taggedReview = actionedReview(review, entityType === 'place_suggestion' ? 'gpt_auto_published' : 'gpt_auto_applied', policy);
     if (entityType === 'place_suggestion') {
+      const restroomId = `community-${submission.id}`;
+      const publicPhotoPath = await promoteApprovedPhoto(submission.photo_path, restroomId);
       const publicRecord = {
-        id: `community-${submission.id}`,
+        id: restroomId,
         name: submission.name,
         address: submission.address,
         neighborhood: 'San Francisco',
@@ -91,18 +112,20 @@ Deno.serve(async (request) => {
         description: review.description || submission.note || 'Community-submitted restroom information. Confirm details when you arrive.',
         source_name: 'Community submission · GPT autopilot',
         source_tier: 'community_verified',
+        public_photo_path: publicPhotoPath,
         verification_status: 'approved',
       };
       const publish = await fetch(`${supabaseUrl}/rest/v1/restrooms?on_conflict=id`, { method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(publicRecord) });
       if (!publish.ok) throw new Error('Autopilot could not publish the suggested place.');
     } else {
-      const source = await fetch(`${supabaseUrl}/rest/v1/restrooms?id=eq.${encodeURIComponent(submission.restroom_id || '')}&select=id,access,tags`, { headers });
+      const source = await fetch(`${supabaseUrl}/rest/v1/restrooms?id=eq.${encodeURIComponent(submission.restroom_id || '')}&select=id,access,tags,public_photo_path`, { headers });
       const [restroom] = await source.json().catch(() => []);
       if (!restroom) throw new Error('Autopilot could not find the existing restroom.');
       const tags = Array.from(new Set([...(Array.isArray(restroom.tags) ? restroom.tags : []), ...uniqueTags(review)]));
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (submission.access_detail) patch.access = submission.access_detail;
       if (tags.length !== (restroom.tags || []).length) patch.tags = tags;
+      if (submission.photo_path) patch.public_photo_path = await promoteApprovedPhoto(submission.photo_path, restroom.id);
       const updated = await fetch(`${supabaseUrl}/rest/v1/restrooms?id=eq.${encodeURIComponent(submission.restroom_id || '')}`, { method: 'PATCH', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
       if (!updated.ok) throw new Error('Autopilot could not apply the update.');
     }

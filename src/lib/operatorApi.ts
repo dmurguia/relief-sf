@@ -49,3 +49,4 @@ export const operatorLogout = () => request('/api/operator/logout', { method: 'P
 export const loadResearchLeads = () => request('/api/operator/research') as Promise<ResearchLeads>;
 export const processResearchLeads = (ids?: string[]) => request('/api/operator/research', { method: 'POST', body: JSON.stringify({ ids, limit: 100 }) }) as Promise<{ ok: boolean; processed: number; routeCounts?: Record<string, number>; message: string }>;
 export const saveAutopilotPolicy = (enabled: boolean, confidenceThreshold: number) => request('/api/operator/autopilot', { method: 'POST', body: JSON.stringify({ enabled, confidenceThreshold }) }) as Promise<AutopilotPolicy>;
+export const syncApprovedPhotos = () => request('/api/operator/photos', { method: 'POST' }) as Promise<{ ok: boolean; promoted: number }>;

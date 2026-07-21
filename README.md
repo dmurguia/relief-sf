@@ -53,7 +53,8 @@ In the Supabase SQL Editor, run these files in order:
 6. [`supabase/add-automated-review.sql`](./supabase/add-automated-review.sql)
 7. [`supabase/fix-anonymous-submission-rls.sql`](./supabase/fix-anonymous-submission-rls.sql)
 8. [`supabase/add-autopilot-policy.sql`](./supabase/add-autopilot-policy.sql)
-9. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
+9. [`supabase/add-public-restroom-photos.sql`](./supabase/add-public-restroom-photos.sql)
+10. [`supabase/generated/city-public-restrooms.sql`](./supabase/generated/city-public-restrooms.sql)
 
 The final generated file contains 214 current DataSF city restroom records. Regenerate it before a release with:
 
@@ -123,6 +124,8 @@ RELIEF_REVIEW_TOKEN=...
 ## Operator workspace
 
 Open `/operator` on the deployed judge URL. It is a deliberately simple demo gate: one shared password, no user accounts. The operator page has a live human-review queue, high-level moderation stats, and an audit tab that exposes GPT's stored reason, proposed tags, submission metadata, and a short-lived signed URL for the contributor-owned photo.
+
+Approving a photo-backed suggestion or update also publishes that approved restroom photo to the public record; no second moderation click is required. Pending and rejected evidence stays private. After adding this capability to an existing project, open `/operator` and press **Refresh** once to backfill photos from previously approved submissions.
 
 Add these **server-only** variables to the existing `relief-sf` Vercel project (Production and Preview), then redeploy from Git:
 
