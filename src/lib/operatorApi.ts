@@ -14,7 +14,7 @@ export type OperatorSubmission = {
   aiReviewStatus: 'queued' | 'reviewing' | 'reviewed' | 'error';
   aiReviewedAt: string | null;
   aiReviewError: string | null;
-  aiReview: { decision?: ReviewDecision; confidence?: number; reason?: string; description?: string; proposed_tags?: string[]; concerns?: string[]; operator_actions?: Array<{ action: string; at: string }> } | null;
+  aiReview: { decision?: ReviewDecision; confidence?: number; reason?: string; description?: string; proposed_tags?: string[]; concerns?: string[]; operator_actions?: Array<{ action: string; at: string; applied_fields?: string[] }> } | null;
   photoUrl: string | null;
   photoPath: string | null;
 };
@@ -43,4 +43,4 @@ export const submitOperatorReview = (entityType: OperatorSubmission['entityType'
 export const autoApproveGptReady = () => request('/api/operator/review', { method: 'POST', body: JSON.stringify({ action: 'auto_approve_all' }) }) as Promise<{ ok: boolean; message: string }>;
 export const operatorLogout = () => request('/api/operator/logout', { method: 'POST' });
 export const loadResearchLeads = () => request('/api/operator/research') as Promise<ResearchLeads>;
-export const processResearchLeads = () => request('/api/operator/research', { method: 'POST', body: JSON.stringify({ limit: 100 }) }) as Promise<{ ok: boolean; processed: number; routeCounts?: Record<string, number>; message: string }>;
+export const processResearchLeads = (ids?: string[]) => request('/api/operator/research', { method: 'POST', body: JSON.stringify({ ids, limit: 100 }) }) as Promise<{ ok: boolean; processed: number; routeCounts?: Record<string, number>; message: string }>;

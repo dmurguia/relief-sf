@@ -2,14 +2,13 @@ const { authorized, configured, rejectUnauthorized, supabase } = require('./_sha
 
 const validEntityTypes = new Set(['place_suggestion', 'restroom_update']);
 const validActions = new Set(['approve', 'reject', 'auto_approve_all', 'edit_and_requeue']);
-const tagList = (review, access) => Array.from(new Set([
+const tagList = (review) => Array.from(new Set([
   ...(Array.isArray(review?.proposed_tags) ? review.proposed_tags : []),
-  ...(access ? [access] : []),
 ].filter((tag) => typeof tag === 'string' && tag.trim().length > 0))).slice(0, 8);
 
-const actionLog = (review, action) => ({
+const actionLog = (review, action, metadata = {}) => ({
   ...(review && typeof review === 'object' ? review : {}),
-  operator_actions: [...(Array.isArray(review?.operator_actions) ? review.operator_actions : []), { action, at: new Date().toISOString() }].slice(-20),
+  operator_actions: [...(Array.isArray(review?.operator_actions) ? review.operator_actions : []), { action, at: new Date().toISOString(), ...metadata }].slice(-20),
 });
 
 async function publishPlaceSuggestion(row, action = 'approved') {
@@ -23,7 +22,7 @@ async function publishPlaceSuggestion(row, action = 'approved') {
     longitude: row.longitude,
     hours: 'Check posted hours',
     access: row.access_detail || 'Check with staff',
-    tags: tagList(row.ai_review, row.access_detail),
+    tags: tagList(row.ai_review),
     description: row.ai_review?.description || row.note || 'Community-submitted restroom information. Confirm details when you arrive.',
     source_name: 'Community submission',
     source_tier: 'community_verified',
@@ -34,7 +33,17 @@ async function publishPlaceSuggestion(row, action = 'approved') {
 }
 
 async function approveUpdate(row, action = 'approved') {
-  await supabase(`/rest/v1/restroom_updates?id=eq.${encodeURIComponent(row.id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'approved', ai_review: actionLog(row.ai_review, action) }) });
+  const { body: restrooms } = await supabase(`/rest/v1/restrooms?id=eq.${encodeURIComponent(row.restroom_id)}&select=id,access,tags`);
+  const restroom = restrooms?.[0];
+  if (!restroom) throw new Error('The source restroom record no longer exists.');
+  const nextTags = Array.from(new Set([...(Array.isArray(restroom.tags) ? restroom.tags : []), ...tagList(row.ai_review)]));
+  const patch = { updated_at: new Date().toISOString() };
+  const appliedFields = [];
+  if (row.access_detail) { patch.access = row.access_detail; appliedFields.push('access'); }
+  if (nextTags.length !== (restroom.tags || []).length) { patch.tags = nextTags; appliedFields.push('tags'); }
+  if (appliedFields.length) await supabase(`/rest/v1/restrooms?id=eq.${encodeURIComponent(row.restroom_id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+  await supabase(`/rest/v1/restroom_updates?id=eq.${encodeURIComponent(row.id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'approved', ai_review: actionLog(row.ai_review, action, { applied_fields: appliedFields }) }) });
+  return appliedFields;
 }
 
 async function requeue(row, table, note) {
@@ -81,7 +90,7 @@ module.exports = async function review(req, res) {
     else await supabase(`/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'rejected', ai_review: actionLog(row.ai_review, 'rejected') }) });
     const message = action === 'approve' && entityType === 'place_suggestion'
       ? 'Published to the public map.'
-      : action === 'approve' ? 'Evidence approved. The restroom record remains unchanged until a later editorial update.' : 'Rejected and retained in the private audit trail.';
+      : action === 'approve' ? 'Approved changes were applied to the public restroom record.' : 'Rejected and retained in the private audit trail.';
     return res.status(200).json({ ok: true, message });
   } catch (error) {
     return res.status(500).json({ error: error instanceof Error ? error.message : 'Could not save the review.' });
